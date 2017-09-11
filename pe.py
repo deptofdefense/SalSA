@@ -175,28 +175,37 @@ class PE(object):
     self.file.seek(self._DOS_HEADER['len'])
     stub_len = self._uint(self.d['DOS_HEADER']['e_lfanew']) - self._DOS_HEADER['len']
     self.d['DOS_STUB'] = bytearray(struct.unpack('{0}s'.format(stub_len), self.file.read(stub_len))[0])
+    offset += self._uint(self.d['DOS_HEADER']['e_lfanew'])
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse PE header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    offset += self._uint(self.d['DOS_HEADER']['e_lfanew'])
     self._unpack(self._PE_HEADER, 'PE_HEADER', offset)
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # parse image header
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     offset += self._PE_HEADER['len']
-    self.file.seek(offset)
-    if self._uint(self.file.read(self._WORD)) == 0x20b:
-      # parse 64 bit binary
-      self._unpack(self._64_IMAGE_HEADER, 'IMAGE_HEADER', offset)
-      offset += self._64_IMAGE_HEADER['len']
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse optional image header
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if self._uint(self.d['PE_HEADER']['SizeOfOptionalHeader']) > 0:
+      self.file.seek(offset)
+      if self._uint(self.file.read(self._WORD)) == 0x20b:
+        # parse 64 bit binary
+        self._unpack(self._64_IMAGE_HEADER, 'IMAGE_HEADER', offset)
+        offset += self._64_IMAGE_HEADER['len']
+      else:
+        # parse 32 bit binary
+        self._unpack(self._32_IMAGE_HEADER, 'IMAGE_HEADER', offset)
+        offset += self._32_IMAGE_HEADER['len']
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # parse data directory (number of directories varies by compiler)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      num_dirs = self._uint(self.d['IMAGE_HEADER']['NumberOfRvaAndSizes'])
+      dirs_fmt = {
+        'len': num_dirs * (2 * self._DWORD),
+        'fmt': self._DATA_DIRECTORY['fmt'][:(num_dirs * 2)]
+      }
+      self._unpack(dirs_fmt, 'DATA_DIRECTORY', offset)
     else:
-      # parse 32 bit binary
-      self._unpack(self._32_IMAGE_HEADER, 'IMAGE_HEADER', offset)
-      offset += self._32_IMAGE_HEADER['len']
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # parse data directory
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    self._unpack(self._DATA_DIRECTORY, 'DATA_DIRECTORY', offset)
+      self.d['IMAGE_HEADER'] = {}
+      self.d['DATA_DIRECTORY'] = {}
 
   def __str__(self):
     """ display header internals as hex strings """
