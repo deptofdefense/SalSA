@@ -227,8 +227,9 @@ class PE(object):
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       num_dirs = self.d['IMAGE_HEADER']['NumberOfRvaAndSizes']
       dirs_fmt = {
-        'len': num_dirs * 8,
-        'fmt': self._DATA_DIRECTORY['fmt'][:(num_dirs * 2)]
+         # only parse data directories we have specified/understand
+        'len': min(num_dirs * 8, self._DATA_DIRECTORY['len']),
+        'fmt': self._DATA_DIRECTORY['fmt'][:min((num_dirs * 2), len(self._DATA_DIRECTORY['fmt']))]
       }
       self._unpack(dirs_fmt, self.d, 'DATA_DIRECTORY', offset)
       offset += dirs_fmt['len']
@@ -264,8 +265,16 @@ class PE(object):
         # unpack each 32 bit address
         for i in range(self.d['EXPORT_DIRECTORY']['NumberOfFunctions']):
           fun_rva = struct.unpack('<I', self._read(export_fun_offset + (i * 4), 4))[0]
-          # todo: check if in export table range for forwarded export
-          if fun_rva:
+          # check for forwarded export
+          if fun_rva and ((self.d['DATA_DIRECTORY']['Export'] <= fun_rva) and
+                          (fun_rva < (self.d['DATA_DIRECTORY']['Export'] + self.d['DATA_DIRECTORY']['Export_size']))):
+             self.d['EXPORT_DIRECTORY']['exports'].append({
+              'offset': self.rva2str(fun_rva),
+              'name': '',
+              'ordinal': '',
+            })
+          # only include non-zero exports
+          elif fun_rva:
             self.d['EXPORT_DIRECTORY']['exports'].append({
               'offset': self.rva2offset(fun_rva),
               'name': '',
@@ -277,8 +286,7 @@ class PE(object):
         for i in range(self.d['EXPORT_DIRECTORY']['NumberOfNames']):
           # get RVA from array and then convert to actual offsets to get data from
           ordinal = struct.unpack('<H', self._read(ordinal_array_offset + (i * 2), 2))[0]
-          name_rva = struct.unpack('<I', self._read(name_array_offset + (i * 4), 4))[0]
-          name = self.rva2str(name_rva)
+          name = self.rva2str(struct.unpack('<I', self._read(name_array_offset + (i * 4), 4))[0])
           # find the ordinal to place this name into
           for e in self.d['EXPORT_DIRECTORY']['exports']:
             if e['ordinal'] == (ordinal + self.d['EXPORT_DIRECTORY']['Base']):
