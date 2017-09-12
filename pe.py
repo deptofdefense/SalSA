@@ -171,6 +171,23 @@ class PE(object):
     ]
   }
 
+  _EXPORT_DIRECTORY = {
+    'len': 40, # in bytes
+    'fmt': [
+      ('Characteristics',      'I'),
+      ('TimeDateStamp',        'I'),
+      ('MajorVersion',         'H'),
+      ('MinorVersion',         'H'),
+      ('Name',                 'I'),
+      ('Base',                 'I'),
+      ('NumberOfFunctions',    'I'),
+      ('NumberOfNames',        'I'),
+      ('AddressOfFunctions',   'I'),
+      ('AddressOfNames',       'I'),
+      ('AddressOfNameOrdinals','I'),
+    ]
+  }
+
 
   def __init__(self, filename):
     """ extract PE file pieces piece by piece """
@@ -184,9 +201,9 @@ class PE(object):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # extract DOS stub
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    self.file.seek(self._DOS_HEADER['len'])
     stub_len = self.d['DOS_HEADER']['e_lfanew'] - self._DOS_HEADER['len']
-    self.d['DOS_STUB'] = struct.unpack('{0}s'.format(stub_len), self.file.read(stub_len))[0]
+    stub_program = self._read(self._DOS_HEADER['len'], stub_len)
+    self.d['DOS_STUB'] = struct.unpack('{0}s'.format(stub_len), stub_program)[0]
     offset += self.d['DOS_HEADER']['e_lfanew']
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse PE header
@@ -197,8 +214,7 @@ class PE(object):
     # parse optional image header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if self.d['PE_HEADER']['SizeOfOptionalHeader'] > 0:
-      self.file.seek(offset)
-      if self.file.read(2) == 0x20b:
+      if struct.unpack('<H', self._read(offset, 2))[0] == 0x20b:
         # parse 64 bit binary
         self._unpack(self._64_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
         offset += self._64_IMAGE_HEADER['len']
@@ -214,11 +230,11 @@ class PE(object):
         'len': num_dirs * 8,
         'fmt': self._DATA_DIRECTORY['fmt'][:(num_dirs * 2)]
       }
-      self._unpack(dirs_fmt, self.d['IMAGE_HEADER'], 'DATA_DIRECTORY', offset)
+      self._unpack(dirs_fmt, self.d, 'DATA_DIRECTORY', offset)
       offset += dirs_fmt['len']
     else:
       self.d['IMAGE_HEADER'] = {}
-      self.d['IMAGE_HEADER']['DATA_DIRECTORY'] = {}
+      self.d['DATA_DIRECTORY'] = {}
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse section headers
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -226,17 +242,88 @@ class PE(object):
     for i in range(self.d['PE_HEADER']['NumberOfSections']):
       section = {}
       self._unpack(self._SECTION_HEADER, section, 'data', offset)
+      # fix section name to remove null byte padding
+      section['data']['Name'] = section['data']['Name'].replace('\x00', '')
       offset += self._SECTION_HEADER['len']
       self.d['SECTIONS'].append(section['data'])
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse known data directory formats (some are not publicly documented)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if self.d['DATA_DIRECTORY']:
+      if self.d['DATA_DIRECTORY']['Debug_size'] > 0:
+        pass # TODO
+      if self.d['DATA_DIRECTORY']['Export_size'] > 0:
+        # unpack export directory
+        export_dir_offset = self.rva2offset(self.d['DATA_DIRECTORY']['Export'])
+        self._unpack(self._EXPORT_DIRECTORY, self.d, 'EXPORT_DIRECTORY', export_dir_offset)
+        # get actual export name from RVA
+        self.d['EXPORT_DIRECTORY']['Name'] = self.rva2str(self.d['EXPORT_DIRECTORY']['Name'])
+        self.d['EXPORT_DIRECTORY']['exports'] = []
+        # get offset to function array
+        export_fun_offset = self.rva2offset(self.d['EXPORT_DIRECTORY']['AddressOfFunctions'])
+        # unpack each 32 bit address
+        for i in range(self.d['EXPORT_DIRECTORY']['NumberOfFunctions']):
+          fun_rva = struct.unpack('<I', self._read(export_fun_offset + (i * 4), 4))[0]
+          # todo: check if in export table range for forwarded export
+          if fun_rva:
+            self.d['EXPORT_DIRECTORY']['exports'].append({
+              'offset': self.rva2offset(fun_rva),
+              'name': '',
+              'ordinal': self.d['EXPORT_DIRECTORY']['Base'] + i,
+            })
+        # fill out names/ordinals for exports if specified
+        name_array_offset = self.rva2offset(self.d['EXPORT_DIRECTORY']['AddressOfNames'])
+        ordinal_array_offset = self.rva2offset(self.d['EXPORT_DIRECTORY']['AddressOfNameOrdinals'])
+        for i in range(self.d['EXPORT_DIRECTORY']['NumberOfNames']):
+          # get RVA from array and then convert to actual offsets to get data from
+          ordinal = struct.unpack('<H', self._read(ordinal_array_offset + (i * 2), 2))[0]
+          name_rva = struct.unpack('<I', self._read(name_array_offset + (i * 4), 4))[0]
+          name = self.rva2str(name_rva)
+          # find the ordinal to place this name into
+          for e in self.d['EXPORT_DIRECTORY']['exports']:
+            if e['ordinal'] == (ordinal + self.d['EXPORT_DIRECTORY']['Base']):
+              e['name'] = name
+              break
+      if self.d['DATA_DIRECTORY']['Import_size'] > 0:
+        pass # TODO
+      if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
+        pass # TODO
+      if self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
+        pass # TODO
+      if self.d['DATA_DIRECTORY']['BaseRelocationTable_size'] > 0:
+        pass # TODO
+
+  def _read(self, addr, num_bytes):
+    """ read bytes from file at a certain offset """
+    self.file.seek(addr)
+    d = self.file.read(num_bytes)
+    return d
 
   def _unpack(self, src, dst, key, offset):
     """ internal function to unpack a given struct/header into an array of bytes """
     dst[key] = {}
     self.file.seek(offset)
-    raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self.file.read(src['len']))
+    raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self._read(offset, src['len']))
     for i in range(len(raw)):
       dst[key][src['fmt'][i][0]] = raw[i]
-    self.file.seek(0)
+
+  def rva2str(self, rva):
+    """ extract a null terminated string given an RVA """
+    offset = self.rva2offset(rva)
+    count = 0
+    self.file.seek(offset)
+    while ord(self.file.read(1)):
+      count += 1
+    return struct.unpack('{0}s'.format(count), self._read(offset, count))[0]
+
+  def rva2offset(self, rva):
+    """ get raw file offset from RVA """
+    target = 0
+    for section in self.d['SECTIONS']:
+      if (rva < section['VirtualAddress']) and target:
+        return target['PointerToRawData'] + (rva - target['VirtualAddress'])
+      target = section
+    return 0
 
   def tohex(self):
     """ display internals as hex strings """
