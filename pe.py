@@ -213,16 +213,15 @@ class PE(object):
     ]
   }
 
-  _IMPORT_ENTRY = {
-    'len': 20, # in bytes
+  _BOUND_IMPORT_DESCRIPTOR = {
+    'len': 8, # in bytes
     'fmt': [
-      ('OriginalFirstThunk','I'),
-      ('TimeDateStamp',     'I'),
-      ('ForwarderChain',    'I'),
-      ('Name',              'I'),
-      ('FirstThunk',        'I'),
+      ('TimeDateStamp',              'I'),
+      ('OffsetModuleName',           'H'),
+      ('NumberOfModuleForwarderRefs','H'),
     ]
   }
+
 
   def __init__(self, filename):
     """ extract PE file piece by piece """
@@ -256,7 +255,7 @@ class PE(object):
         self._unpack(self._64_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
         offset += self._64_IMAGE_HEADER['len']
       else:
-        # parse 32 bit binary
+        # parse 32 bit binary (0x10b)
         self._unpack(self._32_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
         offset += self._32_IMAGE_HEADER['len']
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -387,7 +386,25 @@ class PE(object):
             'name': import_desc['data']['Name'],
             'functions': imports
           })
-      # TODO: parse IAT
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # bound import directory (.idata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if self.d['DATA_DIRECTORY']['BoundImport_size'] > 0:
+        self.d['BOUND_IMPORTS_DIRECTORY'] = []
+        bound_import_offset = self.rva2offset(self.d['DATA_DIRECTORY']['BoundImport'])
+        # unpack array of BOUND_IMPORT_DESCRIPTORs
+        while True:
+          bound_import_desc = {}
+          self._unpack(self._BOUND_IMPORT_DESCRIPTOR, bound_import_desc, 'data', bound_import_offset)
+          # check for null terminator
+          if bound_import_desc['data']['TimeDateStamp'] == 0:
+            break
+          # goto next descriptor
+          bound_import_offset += self._BOUND_IMPORT_DESCRIPTOR['len']
+          # replace name field with actual string
+          bound_import_desc['data']['Name'] = self.rva2str(self.d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['data']['Name'])
+          # add to class dictionary
+          self.d['BOUND_IMPORTS_DIRECTORY'].apend(bound_import_desc)
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
         pass # TODO
       if self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
