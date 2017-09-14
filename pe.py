@@ -188,10 +188,46 @@ class PE(object):
     ]
   }
 
+  _DEBUG_DIRECTORY = {
+    'len': 28, # in bytes
+    'fmt': [
+      ('Characteristics', 'I'),
+      ('TimeDateStamp',   'I'),
+      ('MajorVersion',    'H'),
+      ('MinorVersion',    'H'),
+      ('Type',            'I'),
+      ('SizeOfData',      'I'),
+      ('AddressOfRawData','I'),
+      ('PointerToRawData','I'),
+    ]
+  }
+
+  _IMPORT_DESCRIPTOR = {
+    'len': 20, # in bytes
+    'fmt': [
+      ('OriginalFirstThunk','I'),
+      ('TimeDateStamp',     'I'),
+      ('ForwarderChain',    'I'),
+      ('Name',              'I'),
+      ('FirstThunk',        'I'),
+    ]
+  }
+
+  _IMPORT_ENTRY = {
+    'len': 20, # in bytes
+    'fmt': [
+      ('OriginalFirstThunk','I'),
+      ('TimeDateStamp',     'I'),
+      ('ForwarderChain',    'I'),
+      ('Name',              'I'),
+      ('FirstThunk',        'I'),
+    ]
+  }
 
   def __init__(self, filename):
-    """ extract PE file pieces piece by piece """
+    """ extract PE file piece by piece """
     offset = 0
+    self.b64 = False
     self.file = open(filename, 'rb')
     self.d = {}
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -216,6 +252,7 @@ class PE(object):
     if self.d['PE_HEADER']['SizeOfOptionalHeader'] > 0:
       if struct.unpack('<H', self._read(offset, 2))[0] == 0x20b:
         # parse 64 bit binary
+        self.b64 = True
         self._unpack(self._64_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
         offset += self._64_IMAGE_HEADER['len']
       else:
@@ -247,19 +284,27 @@ class PE(object):
       section['data']['Name'] = section['data']['Name'].replace('\x00', '')
       offset += self._SECTION_HEADER['len']
       self.d['SECTIONS'].append(section['data'])
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    # parse known data directory formats (some are not publicly documented)
-    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse meaningful data directory entries (some not publicly documented)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if self.d['DATA_DIRECTORY']:
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # debug directory (.debug)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Debug_size'] > 0:
-        pass # TODO
+        # unpack debug directory
+        debug_dir_offset = self.rva2offset(self.d['DATA_DIRECTORY']['Debug'])
+        self._unpack(self._DEBUG_DIRECTORY, self.d, 'DEBUG_DIRECTORY', debug_dir_offset)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # export directory (.edata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Export_size'] > 0:
         # unpack export directory
         export_dir_offset = self.rva2offset(self.d['DATA_DIRECTORY']['Export'])
         self._unpack(self._EXPORT_DIRECTORY, self.d, 'EXPORT_DIRECTORY', export_dir_offset)
-        # get actual export name from RVA
+        # get actual export file name from RVA
         self.d['EXPORT_DIRECTORY']['Name'] = self.rva2str(self.d['EXPORT_DIRECTORY']['Name'])
-        self.d['EXPORT_DIRECTORY']['exports'] = []
+        self.d['EXPORTS'] = []
         # get offset to function array
         export_fun_offset = self.rva2offset(self.d['EXPORT_DIRECTORY']['AddressOfFunctions'])
         # unpack each 32 bit address
@@ -267,15 +312,16 @@ class PE(object):
           fun_rva = struct.unpack('<I', self._read(export_fun_offset + (i * 4), 4))[0]
           # check for forwarded export
           if fun_rva and ((self.d['DATA_DIRECTORY']['Export'] <= fun_rva) and
-                          (fun_rva < (self.d['DATA_DIRECTORY']['Export'] + self.d['DATA_DIRECTORY']['Export_size']))):
-             self.d['EXPORT_DIRECTORY']['exports'].append({
+                          (fun_rva < (self.d['DATA_DIRECTORY']['Export'] +
+                                      self.d['DATA_DIRECTORY']['Export_size']))):
+            self.d['EXPORTS'].append({
               'offset': self.rva2str(fun_rva),
               'name': '',
               'ordinal': '',
             })
           # only include non-zero exports
           elif fun_rva:
-            self.d['EXPORT_DIRECTORY']['exports'].append({
+            self.d['EXPORTS'].append({
               'offset': self.rva2offset(fun_rva),
               'name': '',
               'ordinal': self.d['EXPORT_DIRECTORY']['Base'] + i,
@@ -288,12 +334,60 @@ class PE(object):
           ordinal = struct.unpack('<H', self._read(ordinal_array_offset + (i * 2), 2))[0]
           name = self.rva2str(struct.unpack('<I', self._read(name_array_offset + (i * 4), 4))[0])
           # find the ordinal to place this name into
-          for e in self.d['EXPORT_DIRECTORY']['exports']:
+          for e in self.d['EXPORTS']:
             if e['ordinal'] == (ordinal + self.d['EXPORT_DIRECTORY']['Base']):
               e['name'] = name
               break
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # import directory (.idata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Import_size'] > 0:
-        pass # TODO
+        import_desc = {}
+        self.d['IMPORTS'] = []
+        self.d['IMPORT_DIRECTORY'] = []
+        import_desc_offset = self.rva2offset(self.d['DATA_DIRECTORY']['Import'])
+        # unpack each import descriptor entry
+        while True:
+          self._unpack(self._IMPORT_DESCRIPTOR, import_desc, 'data', import_desc_offset)
+          # check for empty entry
+          if import_desc['data']['OriginalFirstThunk'] == 0:
+            break
+          # resolve the name of the import descriptor
+          import_desc['data']['Name'] = self.rva2str(import_desc['data']['Name'])
+          self.d['IMPORT_DIRECTORY'].append(import_desc['data'])
+          # go to the next descriptor
+          import_desc_offset += self._IMPORT_DESCRIPTOR['len']
+          # parse all imports within the current descriptor
+          imports = []
+          import_entry_ptr = self.rva2offset(import_desc['data']['OriginalFirstThunk'])
+          while True:
+            import_entry = {'ordinal':'','name':'','hint':'','binding':''}
+            # get the entry data pointer (32 or 64 bit pointer) and check for ordinal
+            if self.b64:
+              entry_rva = struct.unpack('<Q', self._read(import_entry_ptr, 8))[0]
+              if entry_rva & (0x1 << 63):
+                import_entry['ordinal'] = entry_rva & ~(0x1 << 63)
+            else:
+              entry_rva = struct.unpack('<I', self._read(import_entry_ptr, 4))[0]
+              if entry_rva & (0x1 << 31):
+                import_entry['ordinal'] = entry_rva & ~(0x1 << 31)
+            # check for null entry
+            if entry_rva == 0:
+              break
+            # if not an ordinal, then get entry data at pointer
+            if not import_entry['ordinal']:
+              # name pointer after hint which is 2 byes
+              import_entry['hint'] = struct.unpack('<H', self._read(self.rva2offset(entry_rva), 2))[0]
+              import_entry['name'] = self.rva2str(entry_rva + 2)
+            # go to next pointer
+            import_entry_ptr += 8 if (self.b64) else 4
+            imports.append(import_entry)
+          # add the current import entry to global dictionary
+          self.d['IMPORTS'].append({
+            'name': import_desc['data']['Name'],
+            'functions': imports
+          })
+      # TODO: parse IAT
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
         pass # TODO
       if self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
