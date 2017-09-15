@@ -395,7 +395,6 @@ class PE(object):
       if self.d['DATA_DIRECTORY']['BoundImport_size'] > 0:
         pass # TODO
 
-
   def _read(self, addr, num_bytes):
     """ read bytes from file at a certain offset """
     self.file.seek(addr)
