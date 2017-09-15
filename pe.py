@@ -238,6 +238,30 @@ class PE(object):
     ]
   }
 
+  _32_TLS_DIRECTORY = {
+    'len': 24, # in bytes
+    'fmt': [
+      ('StartAddressOfRawData','I'),
+      ('EndAddressOfRawData',  'I'),
+      ('AddressOfIndex',       'I'),
+      ('AddressOfCallBacks',   'I'),
+      ('SizeOfZeroFill',       'I'),
+      ('Characteristics',      'I'),
+    ]
+  }
+
+  _64_TLS_DIRECTORY = {
+    'len': 40, # in bytes
+    'fmt': [
+      ('StartAddressOfRawData','Q'),
+      ('EndAddressOfRawData',  'Q'),
+      ('AddressOfIndex',       'Q'),
+      ('AddressOfCallBacks',   'Q'),
+      ('SizeOfZeroFill',       'I'),
+      ('Characteristics',      'I'),
+    ]
+  }
+
 
   def __init__(self, filename):
     """ extract PE file piece by piece """
@@ -389,7 +413,12 @@ class PE(object):
       # TLS directory (.tls)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
-        pass # TODO
+        if self.b64:
+          self._unpack(self._64_TLS_DIRECTORY, self.d, 'TLS_DIRECTORY',
+                     self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
+        else:
+          self._unpack(self._32_TLS_DIRECTORY, self.d, 'TLS_DIRECTORY',
+                     self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
         pass # TODO
       if self.d['DATA_DIRECTORY']['BoundImport_size'] > 0:
@@ -425,6 +454,11 @@ class PE(object):
         return section['PointerToRawData'] + (rva - section['VirtualAddress'])
     print('[-] WARNING: Relative Virtual Address: ' + hex(rva) + ' does not fall inside any specified section')
     return 0
+
+  def va2rva(self, va):
+    """ take a virtual address and scale it back by the
+        imagebase in the image optional header """
+    return va - self.d['IMAGE_HEADER']['ImageBase']
 
   def tohex(self):
     """ format internals as hex strings """
@@ -558,3 +592,30 @@ class PE(object):
           'section': section_name,
         })
     return relocs
+
+  def parse_tls(self):
+    """ simply return any TLS RVA function pointers in the array
+        'AddressOfCallBacks' and any TLS data """
+    data = ''
+    callbacks = []
+    if self.d['DATA_DIRECTORY'] and (self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0):
+      # extract binary data for TLS storage
+      data_len = abs(self.d['TLS_DIRECTORY']['EndAddressOfRawData'] - self.d['TLS_DIRECTORY']['StartAddressOfRawData'])
+      if data_len:
+        data_start_offset = self.rva2offset(self.va2rva(self.d['TLS_DIRECTORY']['StartAddressOfRawData']))
+        data = struct.unpack('{0}s'.format(data_len), self._read(data_start_offset, data_len))[0]
+      # follow array and get each function pointer
+      array_offset = self.rva2offset(self.va2rva(self.d['TLS_DIRECTORY']['AddressOfCallBacks']))
+      while True:
+        if self.b64:
+          callback = struct.unpack('<Q', self._read(array_offset, 8))[0]
+          array_offset += 8
+        else:
+          callback = struct.unpack('<I', self._read(array_offset, 4))[0]
+          array_offset += 4
+        # check for null
+        if callback == 0:
+          break
+        callbacks.append(self.rva2offset(self.va2rva((callback))))
+    return {'data': data, 'callback_offsets': callbacks}
+
