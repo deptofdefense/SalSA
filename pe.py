@@ -229,6 +229,15 @@ class PE(object):
     ]
   }
 
+  _EXCEPTION_FUNCTION_ENTRY = {
+    'len': 12, # in bytes
+    'fmt': [
+      ('StartingAddress',  'I'),
+      ('EndingAddress',    'I'),
+      ('UnwindInfoAddress','I'),
+    ]
+  }
+
 
   def __init__(self, filename):
     """ extract PE file piece by piece """
@@ -364,10 +373,26 @@ class PE(object):
       # exception directory (.pdata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Exception_size'] > 0:
-        pass # TODO
+        # parse as many as the size dictates
+        self.d['EXCEPTION_DIRECTORY'] = []
+        entry_offset = self.rva2offset(self.d['DATA_DIRECTORY']['Exception'])
+        # unpack array of EXCEPTION_FUNCTION_ENTRY
+        base_offset = entry_offset
+        while entry_offset < (base_offset + self.d['DATA_DIRECTORY']['Exception_size']):
+          exception_entry = {}
+          self._unpack(self._EXCEPTION_FUNCTION_ENTRY, exception_entry, 'data', entry_offset)
+          # goto next entry
+          entry_offset += self._EXCEPTION_FUNCTION_ENTRY['len']
+          # add to class dictionary
+          self.d['EXCEPTION_DIRECTORY'].append(exception_entry['data'])
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # TLS directory (.tls)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
         pass # TODO
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
+        pass # TODO
+      if self.d['DATA_DIRECTORY']['BoundImport_size'] > 0:
         pass # TODO
 
 
