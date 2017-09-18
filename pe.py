@@ -276,6 +276,58 @@ class PE(object):
     ]
   }
 
+  _32_LOAD_CONFIG_DIRECTORY = {
+    'len': 80, # in bytes
+    'fmt': [
+      ('Size',                         'I'),
+      ('TimeDateStamp',                'I'),
+      ('MajorVersion',                 'H'),
+      ('MinorVersion',                 'H'),
+      ('GlobalFlagsClear',             'I'),
+      ('GlobalFlagsSet',               'I'),
+      ('CriticalSectionDefaultTimeout','I'),
+      ('DeCommitFreeBlockThreshold',   'I'),
+      ('DeCommitTotalFreeThreshold',   'I'),
+      ('LockPrefixTable',              'I'),
+      ('MaximumAllocationSize',        'I'),
+      ('VirtualMemoryThreshold',       'I'),
+      ('ProcessHeapFlags',             'I'),
+      ('ProcessAffinityMask',          'I'),
+      ('CSDVersion',                   'H'),
+      ('Reserved1',                    'H'),
+      ('EditList',                     'I'),
+      ('SecurityCookie',               'I'),
+      ('SEHandlerTable',               'I'),
+      ('SEHandlerCount',               'I'),
+    ]
+  }
+
+  _64_LOAD_CONFIG_DIRECTORY = {
+    'len': 112, # in bytes
+    'fmt': [
+      ('Size',                         'I'),
+      ('TimeDateStamp',                'I'),
+      ('MajorVersion',                 'H'),
+      ('MinorVersion',                 'H'),
+      ('GlobalFlagsClear',             'I'),
+      ('GlobalFlagsSet',               'I'),
+      ('CriticalSectionDefaultTimeout','I'),
+      ('DeCommitFreeBlockThreshold',   'Q'),
+      ('DeCommitTotalFreeThreshold',   'Q'),
+      ('LockPrefixTable',              'Q'),
+      ('MaximumAllocationSize',        'Q'),
+      ('VirtualMemoryThreshold',       'Q'),
+      ('ProcessAffinityMask',          'Q'),
+      ('ProcessHeapFlags',             'I'),
+      ('CSDVersion',                   'H'),
+      ('Reserved1',                    'H'),
+      ('EditList',                     'Q'),
+      ('SecurityCookie',               'Q'),
+      ('SEHandlerTable',               'Q'),
+      ('SEHandlerCount',               'Q'),
+    ]
+  }
+
 
   def __init__(self, filename):
     """ extract PE file piece by piece """
@@ -453,10 +505,18 @@ class PE(object):
           # go to the next descriptor
           import_desc_offset += self._DELAY_IMPORT_DESCRIPTOR['len']
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # configuration directory (???)
+      # configuration directory (.rdata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['LoadConfiguration_size'] > 0:
-        pass # TODO
+        if self.b64:
+          self._unpack(self._64_LOAD_CONFIG_DIRECTORY, self.d, 'LOAD_CONFIG_DIRECTORY',
+                     self.rva2offset(self.d['DATA_DIRECTORY']['LoadConfiguration']))
+        else:
+          self._unpack(self._32_LOAD_CONFIG_DIRECTORY, self.d, 'LOAD_CONFIG_DIRECTORY',
+                     self.rva2offset(self.d['DATA_DIRECTORY']['LoadConfiguration']))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # configuration directory (.rsrc)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
         pass # TODO
 
