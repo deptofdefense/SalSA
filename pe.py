@@ -328,13 +328,25 @@ class PE(object):
     ]
   }
 
+  _RESOURCE_DIRECTORY = {
+    'len': 16, # in bytes
+    'fmt': [
+      ('Characteristics',     'I'),
+      ('TimeDateStamp',       'I'),
+      ('MajorVersion',        'H'),
+      ('MinorVersion',        'H'),
+      ('NumberOfNamedEntries','H'),
+      ('NumberOfIdEntries',   'H'),
+    ]
+  }
+
 
   def __init__(self, filename):
     """ extract PE file piece by piece """
     offset = 0
+    self.d = {}
     self.b64 = False
     self.file = open(filename, 'rb')
-    self.d = {}
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse DOS header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -518,7 +530,8 @@ class PE(object):
       # configuration directory (.rsrc)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
-        pass # TODO
+        self._unpack(self._RESOURCE_DIRECTORY, self.d, 'RESOURCE_DIRECTORY',
+                     self.rva2offset(self.d['DATA_DIRECTORY']['Resource']))
 
   def __str__(self):
     """ format internals as hex strings """
@@ -585,6 +598,50 @@ class PE(object):
       import_entry_ptr += 8 if (self.b64) else 4
       desc_imports.append(import_entry)
     return desc_imports
+
+  def _parseResourceRecursive(self, dir_rva, nodes, path):
+    """ take a base RVA to an _RESOURCE_DIRECTORY and extract
+        all RESOURCE_ENTRYs inside recursively into nodes """
+    # get info from _RESOURCE_DIRECTORY
+    base = self.rva2offset(dir_rva)
+    num_names = struct.unpack('<H', self._read(base + 12, 2))[0]
+    num_ids = struct.unpack('<H', self._read(base + 14, 2))[0]
+    # parse each RESOURCE_DIRECTORY_ENTRY
+    entry_offset = base + self._RESOURCE_DIRECTORY['len']
+    for i in range(num_names + num_ids):
+      # extract Name and OffsetToData for this RESOURCE_DIRECTORY_ENTRY
+      ename =  struct.unpack('<I', self._read(entry_offset, 4))[0]
+      eoffset = struct.unpack('<I', self._read(entry_offset + 4, 4))[0]
+      # parse name/id for entry
+      next_path = path
+      if ename & (0x1 << 31):
+        # name is a string RVA
+        ename_base = self.rva2offset(self.d['DATA_DIRECTORY']['Resource'] + (ename & ~(0x1 << 31)))
+        ename_len = struct.unpack('<H', self._read(ename_base, 2))[0]
+        # decode UTF-16LE string
+        ename_raw = struct.unpack('{0}s'.format(ename_len * 2), self._read(ename_base + 2, ename_len * 2))[0]
+        next_path += ename_raw.decode('UTF-16LE')
+      else:
+        # name is an ID
+        next_path += str(ename & 0xFFFF)
+      # check for another directory to parse
+      if eoffset & (0x1 << 31):
+        # directory offset. recurse downwards
+        self._parseResourceRecursive(self.d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)), nodes, next_path + '/')
+      else:
+        node = {}
+        # data offset. extract codepage, data, and language
+        data_base = self.rva2offset(self.d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)))
+        data_rva = struct.unpack('<I', self._read(data_base, 4))[0]
+        data_len = struct.unpack('<I', self._read(data_base + 4, 4))[0]
+        node['codepage'] = struct.unpack('<I', self._read(data_base + 8, 4))[0]
+        node['data'] = struct.unpack('{0}s'.format(data_len), self._read(self.rva2offset(data_rva), data_len))[0]
+        node['lang'] = ename & 0xFFFF
+        node['path'] = path
+        # append data to the current level in recursion
+        nodes.append(node)
+      # goto the next directory entry
+      entry_offset += 8
 
   def dict(self):
     """ returns a copy of internal PE headers for user modification as
@@ -737,3 +794,10 @@ class PE(object):
         callbacks.append(self.rva2offset(self.va2rva((callback))))
     return {'data': data, 'callback_offsets': callbacks}
 
+  def parse_resources(self):
+    """ parse resources filesystem and return all information serialized """
+    rdir = []
+    if self.d['DATA_DIRECTORY'] and (self.d['DATA_DIRECTORY']['Resource_size'] > 0):
+      # recurse down the resource directory
+      self._parseResourceRecursive(self.d['DATA_DIRECTORY']['Resource'], rdir, '/')
+    return rdir
