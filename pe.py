@@ -1,7 +1,7 @@
 
 import copy
 import struct
-import binascii
+import pprint
 
 
 class PE(object):
@@ -212,6 +212,20 @@ class PE(object):
     ]
   }
 
+  _DELAY_IMPORT_DESCRIPTOR = {
+    'len': 32, # in bytes
+    'fmt': [
+      ('Attributes',             'I'),
+      ('Name',                   'I'),
+      ('ModuleHandle',           'I'),
+      ('ImportAddressTable',     'I'),
+      ('ImportNameTable',        'I'),
+      ('BoundImportAddressTable','I'),
+      ('UnloadInformationTable', 'I'),
+      ('TimeDateStamp',          'I'),
+    ]
+  }
+
   _BOUND_IMPORT_DESCRIPTOR = {
     'len': 8, # in bytes
     'fmt': [
@@ -375,7 +389,8 @@ class PE(object):
           # goto next descriptor
           bound_import_offset += self._BOUND_IMPORT_DESCRIPTOR['len']
           # replace name field with actual string
-          bound_import_desc['data']['Name'] = self.rva2str(self.d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['data']['Name'])
+          bound_import_desc['data']['OffsetModuleName'] = self.rva2str(self.d['DATA_DIRECTORY']['BoundImport'] +
+                                                                       bound_import_desc['data']['OffsetModuleName'])
           # add to class dictionary
           self.d['BOUND_IMPORTS_DIRECTORY'].append(bound_import_desc['data'])
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -419,10 +434,37 @@ class PE(object):
         else:
           self._unpack(self._32_TLS_DIRECTORY, self.d, 'TLS_DIRECTORY',
                      self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # delay imports directory (.idata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if self.d['DATA_DIRECTORY']['DelayImportTable_size'] > 0:
+        import_desc = {}
+        self.d['DELAY_IMPORT_DIRECTORY'] = []
+        import_desc_offset = self.rva2offset(self.d['DATA_DIRECTORY']['DelayImportTable'])
+        # unpack each delay import descriptor entry
+        while True:
+          self._unpack(self._DELAY_IMPORT_DESCRIPTOR, import_desc, 'data', import_desc_offset)
+          # check for empty entry
+          if import_desc['data']['Name'] == 0:
+            break
+          # resolve the name of the import descriptor
+          import_desc['data']['Name'] = self.rva2str(import_desc['data']['Name'])
+          self.d['DELAY_IMPORT_DIRECTORY'].append(import_desc['data'])
+          # go to the next descriptor
+          import_desc_offset += self._DELAY_IMPORT_DESCRIPTOR['len']
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # configuration directory (???)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      if self.d['DATA_DIRECTORY']['LoadConfiguration_size'] > 0:
+        pass # TODO
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
         pass # TODO
-      if self.d['DATA_DIRECTORY']['BoundImport_size'] > 0:
-        pass # TODO
+
+  def __str__(self):
+    """ format internals as hex strings """
+    output = copy.deepcopy(self.d)
+    self._fmt2hex(output)
+    return pprint.pformat(output)
 
   def _read(self, addr, num_bytes):
     """ read bytes from file at a certain offset """
@@ -437,6 +479,57 @@ class PE(object):
     raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self._read(offset, src['len']))
     for i in range(len(raw)):
       dst[key][src['fmt'][i][0]] = raw[i]
+
+  def _fmt2hex(self, d):
+    """ format dictionary 'd' into a readable hex format """
+    if isinstance(d, dict):
+      for k in d.keys():
+        d[k] = self._fmt2hex(d[k])
+      return d
+    elif isinstance(d, list):
+      for i in range(len(d)):
+        d[i] = self._fmt2hex(d[i])
+      return d
+    elif isinstance(d, int):
+      return hex(d)
+    elif isinstance(d, str):
+      # return raw ascii strings with . for unknwown bytes
+      return ''.join([x if ((31 < ord(x)) and (ord(x) < 127)) else '.' for x in d])
+
+  def _parseINT(self, rva):
+    """ internal helper to parse the Import Name Table (INT) for
+        delay import tables and normal (static) import tables """
+    desc_imports = []
+    # parse all imports within the current descriptor
+    import_entry_ptr = self.rva2offset(rva)
+    while True:
+      import_entry = {'ordinal':'','name':'','hint':''}
+      # get the entry data pointer (32 or 64 bit pointer) and check for ordinal
+      if self.b64:
+        entry_rva = struct.unpack('<Q', self._read(import_entry_ptr, 8))[0]
+        if entry_rva & (0x1 << 63):
+          import_entry['ordinal'] = entry_rva & ~(0x1 << 63)
+      else:
+        entry_rva = struct.unpack('<I', self._read(import_entry_ptr, 4))[0]
+        if entry_rva & (0x1 << 31):
+          import_entry['ordinal'] = entry_rva & ~(0x1 << 31)
+      # check for null entry
+      if entry_rva == 0:
+        break
+      # if not an ordinal, then get entry data at pointer
+      if not import_entry['ordinal']:
+        # name pointer after hint which is 2 byes
+        import_entry['hint'] = struct.unpack('<H', self._read(self.rva2offset(entry_rva), 2))[0]
+        import_entry['name'] = self.rva2str(entry_rva + 2)
+      # go to next pointer
+      import_entry_ptr += 8 if (self.b64) else 4
+      desc_imports.append(import_entry)
+    return desc_imports
+
+  def dict(self):
+    """ returns a copy of internal PE headers for user modification as
+        a python dictionary """
+    return copy.deepcopy(self.d)
 
   def rva2str(self, rva):
     """ extract a null terminated string given an RVA """
@@ -459,26 +552,6 @@ class PE(object):
     """ take a virtual address and scale it back by the
         imagebase in the image optional header """
     return va - self.d['IMAGE_HEADER']['ImageBase']
-
-  def tohex(self):
-    """ format internals as hex strings """
-    def _fmt(d):
-      if isinstance(d, dict):
-        for k in d.keys():
-          d[k] = _fmt(d[k])
-        return d
-      elif isinstance(d, list):
-        for i in range(len(d)):
-          d[i] = _fmt(d[i])
-        return d
-      elif isinstance(d, int):
-        return hex(d)
-      elif isinstance(d, str):
-        # return raw ascii strings with . for unknwown bytes
-        return ''.join([x if ((31 < ord(x)) and (ord(x) < 127)) else '.' for x in d])
-    output = copy.deepcopy(self.d)
-    _fmt(output)
-    return output
 
   def parse_exports(self):
     """ try and follow the export directory and return PE exports """
@@ -520,38 +593,23 @@ class PE(object):
     return exports
 
   def parse_imports(self):
-    """ try and follow the import directory and return PE imports """
+    """ try and follow the delay-load and static import directoryies
+        and return PE imports """
     imports = []
     if self.d['DATA_DIRECTORY'] and (self.d['DATA_DIRECTORY']['Import_size'] > 0):
-      # go through each import descriptor
+      # go through each import descriptor and get list of imports
       for import_desc in self.d['IMPORT_DIRECTORY']:
-        desc_imports = []
-        # parse all imports within the current descriptor
-        import_entry_ptr = self.rva2offset(import_desc['OriginalFirstThunk'])
-        while True:
-          import_entry = {'ordinal':'','name':'','hint':'','binding':''}
-          # get the entry data pointer (32 or 64 bit pointer) and check for ordinal
-          if self.b64:
-            entry_rva = struct.unpack('<Q', self._read(import_entry_ptr, 8))[0]
-            if entry_rva & (0x1 << 63):
-              import_entry['ordinal'] = entry_rva & ~(0x1 << 63)
-          else:
-            entry_rva = struct.unpack('<I', self._read(import_entry_ptr, 4))[0]
-            if entry_rva & (0x1 << 31):
-              import_entry['ordinal'] = entry_rva & ~(0x1 << 31)
-          # check for null entry
-          if entry_rva == 0:
-            break
-          # if not an ordinal, then get entry data at pointer
-          if not import_entry['ordinal']:
-            # name pointer after hint which is 2 byes
-            import_entry['hint'] = struct.unpack('<H', self._read(self.rva2offset(entry_rva), 2))[0]
-            import_entry['name'] = self.rva2str(entry_rva + 2)
-          # go to next pointer
-          import_entry_ptr += 8 if (self.b64) else 4
-          desc_imports.append(import_entry)
+        desc_imports = self._parseINT(import_desc['OriginalFirstThunk'])
         imports.append({
-          'name': import_desc['Name'],
+          'dll': import_desc['Name'],
+          'functions': desc_imports,
+        })
+    if self.d['DATA_DIRECTORY'] and (self.d['DATA_DIRECTORY']['DelayImportTable_size'] > 0):
+      # go through each import descriptor and get list of imports
+      for import_desc in self.d['DELAY_IMPORT_DIRECTORY']:
+        desc_imports = self._parseINT(import_desc['ImportNameTable'])
+        imports.append({
+          'dll': import_desc['Name'],
           'functions': desc_imports,
         })
     return imports
