@@ -710,7 +710,7 @@ class PE(object):
     return exports
 
   def parse_imports(self):
-    """ try and follow the delay-load and static import directoryies
+    """ try and follow the delay-load and static import directories
         and return PE imports """
     imports = []
     if self.d['DATA_DIRECTORY'] and (self.d['DATA_DIRECTORY']['Import_size'] > 0):

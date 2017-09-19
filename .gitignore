@@ -1,5 +1,6 @@
-# custom files
-test.*
+*.exe
+*.dll
+*.sys
 
 
 ### Python ###
