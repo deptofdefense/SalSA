@@ -27,7 +27,7 @@ for rule in rules.__all__:
 # display any alerts sorted by level
 print('[-] results:')
 print('-' * 80)
-for a in sorted(alerts, key=lambda x: x['level']):
-  print(a['text'])
+for a in alerts:
+  print(a)
   # display delimiter
   print('-' * 80)
