@@ -6,9 +6,9 @@ possible expansions:
 http://resources.infosecinstitute.com/windows-functions-in-malware-analysis-cheat-sheet-part-1/#article
 """
 
-# list of functions and their descriptions
+# list of targeted functions and their descriptions
 targets = {
-  '':'Unknown. Function is imported by ordinal and is decoded at runtime.',
+  '':'Unknown. Ordinal is decoded at runtime. To see ordinal mapping, Find the DLL and use the parse_exports() method of the PE class.',
   'CreateFile':'Creates or opens a file or I/O device.',
   'CreateMutex':'Creates or opens a named or unnamed mutex object.',
   'CreateProcess':'Creates a new process and its primary thread. The new process runs in the security context of the calling process.',
@@ -44,48 +44,48 @@ targets = {
 # matrix to represent functionality with DLL function imports
 matrix = [
   {
-    'imports': [], # empty container to represent all functions imported by ordinal.
-    'output': 'Executable Obfuscation (executable using ordinals to specify DLL imports, which prevents static import analysis)',
+    'imports': [''], # empty container to represent all functions imported by ordinal.
+    'output': 'Executable Obfuscation: executable using ordinals to specify DLL imports, which prevents static import analysis',
   },
   {
     'imports': ['GetAsyncKeyState', 'SetWindowsHookEx'],
-    'output': 'Keylogger (executable possibly hooking user keyboard input)',
+    'output': 'Keylogger: executable possibly hooking user keyboard input',
   },
   {
     'imports': ['LoadLibrary', 'GetProcAddress'],
-    'output': 'Dynamic DLL Loading (executable possibly imports DLLs at runtime)',
+    'output': 'Dynamic DLL Loading: executable possibly imports DLLs at runtime',
   },
   {
     'imports': ['CreateRemoteThread', 'OpenProcess', 'VirtualAllocEx', 'WriteProcessMemory', 'EnumProcesses'],
-    'output': 'Code Injection (executable possibly creating threads in running processes)',
+    'output': 'Code Injection: executable possibly creating threads in running processes',
   },
   {
     'imports': ['CreateToolhelp32Snapshot', 'OpenProcess', 'ReadProcessMemory', 'EnumProcesses'],
-    'output': 'Memory Scraping (executable possibly trying to read RAM of running processes)',
+    'output': 'Memory Scraping: executable possibly trying to read RAM of running processes',
   },
   {
     'imports': ['GetClipboardData', 'GetWindowText'],
-    'output': 'Data Stealing (executable possibly reading user data)',
+    'output': 'Data Stealing: executable possibly reading user data',
   },
   {
     'imports': ['FindResource', 'LockResource'],
-    'output': 'Embedded Resources (executable possibly reading sensitive data from resources section of executable)',
+    'output': 'Embedded Resources: executable possibly reading sensitive data from resources section of executable',
   },
   {
     'imports': ['VirtualAlloc', 'VirtualProtect'],
-    'output': 'Unpacking/Self-Injection (executable possibly packed or injecting code at runtime into itself)',
+    'output': 'Unpacking/Self-Injection: executable possibly packed or injecting code at runtime into itself',
   },
   {
     'imports': ['CreateMutex', 'CreateFile', 'FindWindow', 'GetModuleHandle', 'RegOpenKeyEx'],
-    'output': 'System Artifacts (executable possibly creating system artifacts)',
+    'output': 'System Artifacts: executable possibly creating system artifacts',
   },
   {
     'imports': ['WinExec', 'ShellExecute', 'CreateProcess'],
-    'output': 'Program Exection (executable possibly executing a shell or spawning another process)',
+    'output': 'Program Exection: executable possibly executing a shell or spawning another process',
   },
   {
     'imports': ['InternetOpen', 'HttpOpenRequest', 'HttpSendRequest', 'InternetReadFile'],
-    'output': 'Web Interaction (executable possibly making HTTP web requests)',
+    'output': 'Web Interaction: executable possibly making HTTP web requests',
   },
 ]
 
@@ -108,17 +108,21 @@ def run(peobject):
       # check for function in matrix (by name)
       for x in matrix:
         if f['name'] in x['imports']:
+          ordinal = hex(f['ordinal']) if f['ordinal'] else f['ordinal']
           # add to results array
           if x['output'] not in temp.keys():
-            temp[x['output']] = [(dll['dll'], f['name'])]
+            temp[x['output']] = [(dll['dll'], f['name'], ordinal)]
           else:
-            temp[x['output']].append((dll['dll'], f['name']))
+            temp[x['output']].append((dll['dll'], f['name'], ordinal))
           break
   # format each alert
   for a in temp.keys():
     # format the output for each import
     functions = '\n'.join([
-      ''.join(['[',f[0],'] ',f[1],' - ',targets[f[1]]]) for f in temp[a] if f[1] in targets.keys()
+      ''.join(['[',f[0],'] ',
+               f[1] if f[1] else 'ordinal({0})'.format(f[2]), # check for import by ordinal
+               ' - ',targets[f[1]]
+              ]) for f in temp[a] if f[1] in targets.keys()
     ])
     alerts.append(ALERT_FMT.format(a, functions))
   return alerts

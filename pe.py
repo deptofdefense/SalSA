@@ -277,7 +277,7 @@ class PE(object):
   }
 
   _32_LOAD_CONFIG_DIRECTORY = {
-    'len': 80, # in bytes
+    'len': 72, # in bytes
     'fmt': [
       ('Size',                         'I'),
       ('TimeDateStamp',                'I'),

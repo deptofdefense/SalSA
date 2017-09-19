@@ -1,6 +1,4 @@
-*.exe
-*.dll
-*.sys
+tests/*
 
 
 ### Python ###
