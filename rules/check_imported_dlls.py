@@ -1,6 +1,5 @@
 """
 Align imported dlls/functions to executable functionality.
-All function descriptions taken from offical MSDN documentation.
 
 possible expansions:
 http://resources.infosecinstitute.com/windows-functions-in-malware-analysis-cheat-sheet-part-1/#article
