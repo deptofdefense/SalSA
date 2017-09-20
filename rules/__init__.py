@@ -6,12 +6,12 @@
  - check for uncommon things
  - import hash calculations
  - sigcheck
- - check for executable and writiable sections
  - check for packers
 """
 
 __all__ = [
   'check_imported_dlls',
   'check_dos_stub',
+  'check_section_permissions',
 ]
 

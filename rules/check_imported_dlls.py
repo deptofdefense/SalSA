@@ -7,7 +7,7 @@ http://resources.infosecinstitute.com/windows-functions-in-malware-analysis-chea
 
 # list of targeted functions and their descriptions
 targets = {
-  '':'Unknown. Ordinal is decoded at runtime. To see ordinal mapping, Find the DLL and use the parse_exports() method of the PE class.',
+  '':'Ordinal is decoded at runtime. To see ordinal mapping, Download the DLL and use the parse_exports() method of the PE class.',
   'CreateFile':'Creates or opens a file or I/O device.',
   'CreateMutex':'Creates or opens a named or unnamed mutex object.',
   'CreateProcess':'Creates a new process and its primary thread. The new process runs in the security context of the calling process.',

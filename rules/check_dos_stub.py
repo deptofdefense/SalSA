@@ -18,6 +18,9 @@ Executable does not contain the standard DOS stub program included by the
 microsoft linker. This is uncommon and may indicate malware obfuscation
 or attempts to store data in the DOS stub by the malware since it is
 overlooked by the Windows loader at runtime.
+
+DOS Stub (displayed as a python byte string so ASCII chars are converted):
+{0}
 """
 
 RICH_ALERT = """
@@ -25,8 +28,11 @@ Malware Obfuscation:
 
 Executable does not contain a standard 'Rich' header for the DOS stub
 program. This is uncommon and may indicate malware obfuscation or
-attempts to store data in the DOS stub byt he malware since it is
+attempts to store data in the DOS stub by the malware since it is
 overlooked by the Windows loader at runtime.
+
+DOS Stub (displayed as a python byte string so ASCII chars are converted):
+{0}
 """
 
 def run(peobject):
@@ -34,8 +40,8 @@ def run(peobject):
   alerts = []
   # get the DOS stub from the exectuable and check if it isn't what we expect
   stub = peobject.dict()['DOS_STUB']
-  if (STANDARD_STUB in stub):
-    alerts.append(STUB_ALERT)
+  if (STANDARD_STUB not in stub):
+    alerts.append(STUB_ALERT.format(stub))
   if ('Rich' not in stub):
-    alerts.append(STUB_ALERT)
+    alerts.append(RICH_ALERT.format(stub))
   return alerts
