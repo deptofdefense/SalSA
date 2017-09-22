@@ -1,11 +1,5 @@
 """
 Check for sections with write & execute permissions
-
-Self-Modifying Mode Explanation:
-https://malwaremusings.com/2012/10/15/self-modifying-code-changing-exe-file-section-characteristics/
-
-Shared DLLs:
-https://storage.googleapis.com/google-code-archive-downloads/v2/code.google.com/dll-shared-sections/DLL%20shared%20sections%20(update%201).pdf
 """
 
 # constants from WINNT.H
@@ -20,7 +14,7 @@ IMAGE_SCN_MEM_WRITE              = 0x80000000
 WRITABLE_CODE_ALERT = """
 Self-Modifying Code:
 
-PE file section {0} has been marked as executable and writable.
+PE file section {0} has been marked as executable and writeable.
 Malware can use this to change functionality or self-inject code at
 runtime. Section begins at file offset {1} and is {2} bytes long.
 
@@ -32,7 +26,7 @@ runtime. Section begins at file offset {1} and is {2} bytes long.
 SECTION_SHARED = """\t- Section marked as sharable between processes. This
 \t  is bad for DLLs because it allows for code injection into processes
 \t  who use the DLL."""
-SECTION_INITALIZED = """\t- Section marked as containing initalized data.
+SECTION_INITALIZED = """\t- Section marked as containing initialized data.
 \t  Executable may be modifying important configuration data at runtime."""
 SECTION_UNINITALIZED = """\t- Section marked as containing uninitalized data.
 \t  Executable may be setting important configuration data at runtime."""
@@ -44,7 +38,7 @@ def run(peobject):
   alerts = []
   # loop through each section
   for s in peobject.dict()['SECTIONS']:
-    # check for writable code sections
+    # check for writeable code sections
     if ((s['Characteristics'] & IMAGE_SCN_MEM_WRITE) and
         (s['Characteristics'] & IMAGE_SCN_MEM_EXECUTE)):
       # check for section type

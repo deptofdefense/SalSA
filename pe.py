@@ -355,7 +355,7 @@ class PE(object):
     # extract DOS stub
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     stub_len = self.d['DOS_HEADER']['e_lfanew'] - self._DOS_HEADER['len']
-    stub_program = self._read(self._DOS_HEADER['len'], stub_len)
+    stub_program = self.read(self._DOS_HEADER['len'], stub_len)
     self.d['DOS_STUB'] = struct.unpack('{0}s'.format(stub_len), stub_program)[0]
     offset += self.d['DOS_HEADER']['e_lfanew']
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -367,7 +367,7 @@ class PE(object):
     # parse optional image header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     if self.d['PE_HEADER']['SizeOfOptionalHeader'] > 0:
-      if struct.unpack('<H', self._read(offset, 2))[0] == 0x20b:
+      if struct.unpack('<H', self.read(offset, 2))[0] == 0x20b:
         # parse 64 bit binary
         self.b64 = True
         self._unpack(self._64_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
@@ -539,17 +539,11 @@ class PE(object):
     self._fmt2hex(output)
     return pprint.pformat(output)
 
-  def _read(self, addr, num_bytes):
-    """ read bytes from file at a certain offset """
-    self.file.seek(addr)
-    d = self.file.read(num_bytes)
-    return d
-
   def _unpack(self, src, dst, key, offset):
     """ internal function to unpack a given struct/header into an array of bytes """
     dst[key] = {}
     self.file.seek(offset)
-    raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self._read(offset, src['len']))
+    raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self.read(offset, src['len']))
     for i in range(len(raw)):
       dst[key][src['fmt'][i][0]] = raw[i]
 
@@ -579,11 +573,11 @@ class PE(object):
       import_entry = {'ordinal':'','name':'','hint':''}
       # get the entry data pointer (32 or 64 bit pointer) and check for ordinal
       if self.b64:
-        entry_rva = struct.unpack('<Q', self._read(import_entry_ptr, 8))[0]
+        entry_rva = struct.unpack('<Q', self.read(import_entry_ptr, 8))[0]
         if entry_rva & (0x1 << 63):
           import_entry['ordinal'] = entry_rva & ~(0x1 << 63)
       else:
-        entry_rva = struct.unpack('<I', self._read(import_entry_ptr, 4))[0]
+        entry_rva = struct.unpack('<I', self.read(import_entry_ptr, 4))[0]
         if entry_rva & (0x1 << 31):
           import_entry['ordinal'] = entry_rva & ~(0x1 << 31)
       # check for null entry
@@ -592,7 +586,7 @@ class PE(object):
       # if not an ordinal, then get entry data at pointer
       if not import_entry['ordinal']:
         # name pointer after hint which is 2 byes
-        import_entry['hint'] = struct.unpack('<H', self._read(self.rva2offset(entry_rva), 2))[0]
+        import_entry['hint'] = struct.unpack('<H', self.read(self.rva2offset(entry_rva), 2))[0]
         import_entry['name'] = self.rva2str(entry_rva + 2)
       # go to next pointer
       import_entry_ptr += 8 if (self.b64) else 4
@@ -604,22 +598,22 @@ class PE(object):
         all RESOURCE_ENTRYs inside recursively into nodes """
     # get info from _RESOURCE_DIRECTORY
     base = self.rva2offset(dir_rva)
-    num_names = struct.unpack('<H', self._read(base + 12, 2))[0]
-    num_ids = struct.unpack('<H', self._read(base + 14, 2))[0]
+    num_names = struct.unpack('<H', self.read(base + 12, 2))[0]
+    num_ids = struct.unpack('<H', self.read(base + 14, 2))[0]
     # parse each RESOURCE_DIRECTORY_ENTRY
     entry_offset = base + self._RESOURCE_DIRECTORY['len']
     for i in range(num_names + num_ids):
       # extract Name and OffsetToData for this RESOURCE_DIRECTORY_ENTRY
-      ename =  struct.unpack('<I', self._read(entry_offset, 4))[0]
-      eoffset = struct.unpack('<I', self._read(entry_offset + 4, 4))[0]
+      ename =  struct.unpack('<I', self.read(entry_offset, 4))[0]
+      eoffset = struct.unpack('<I', self.read(entry_offset + 4, 4))[0]
       # parse name/id for entry
       next_path = path
       if ename & (0x1 << 31):
         # name is a string RVA
         ename_base = self.rva2offset(self.d['DATA_DIRECTORY']['Resource'] + (ename & ~(0x1 << 31)))
-        ename_len = struct.unpack('<H', self._read(ename_base, 2))[0]
+        ename_len = struct.unpack('<H', self.read(ename_base, 2))[0]
         # decode UTF-16LE string
-        ename_raw = struct.unpack('{0}s'.format(ename_len * 2), self._read(ename_base + 2, ename_len * 2))[0]
+        ename_raw = struct.unpack('{0}s'.format(ename_len * 2), self.read(ename_base + 2, ename_len * 2))[0]
         next_path += ename_raw.decode('UTF-16LE')
       else:
         # name is an ID
@@ -632,16 +626,22 @@ class PE(object):
         node = {}
         # data offset. extract codepage, data, and language
         data_base = self.rva2offset(self.d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)))
-        data_rva = struct.unpack('<I', self._read(data_base, 4))[0]
-        data_len = struct.unpack('<I', self._read(data_base + 4, 4))[0]
-        node['codepage'] = struct.unpack('<I', self._read(data_base + 8, 4))[0]
-        node['data'] = struct.unpack('{0}s'.format(data_len), self._read(self.rva2offset(data_rva), data_len))[0]
+        data_rva = struct.unpack('<I', self.read(data_base, 4))[0]
+        data_len = struct.unpack('<I', self.read(data_base + 4, 4))[0]
+        node['codepage'] = struct.unpack('<I', self.read(data_base + 8, 4))[0]
+        node['data'] = struct.unpack('{0}s'.format(data_len), self.read(self.rva2offset(data_rva), data_len))[0]
         node['lang'] = ename & 0xFFFF
         node['path'] = path
         # append data to the current level in recursion
         nodes.append(node)
       # goto the next directory entry
       entry_offset += 8
+
+  def read(self, addr, num_bytes):
+    """ read bytes from file at a certain offset """
+    self.file.seek(addr)
+    d = self.file.read(num_bytes)
+    return d
 
   def dict(self):
     """ returns a copy of internal PE headers for user modification as
@@ -655,7 +655,7 @@ class PE(object):
     self.file.seek(offset)
     while ord(self.file.read(1)):
       count += 1
-    return struct.unpack('{0}s'.format(count), self._read(offset, count))[0]
+    return struct.unpack('{0}s'.format(count), self.read(offset, count))[0]
 
   def rva2offset(self, rva):
     """ get raw file offset from RVA """
@@ -678,7 +678,7 @@ class PE(object):
       export_fun_offset = self.rva2offset(self.d['EXPORT_DIRECTORY']['AddressOfFunctions'])
       # unpack each 32 bit address
       for i in range(self.d['EXPORT_DIRECTORY']['NumberOfFunctions']):
-        fun_rva = struct.unpack('<I', self._read(export_fun_offset + (i * 4), 4))[0]
+        fun_rva = struct.unpack('<I', self.read(export_fun_offset + (i * 4), 4))[0]
         # check for forwarded export
         if fun_rva and ((self.d['DATA_DIRECTORY']['Export'] <= fun_rva) and
                         (fun_rva < (self.d['DATA_DIRECTORY']['Export'] +
@@ -700,8 +700,8 @@ class PE(object):
       ordinal_array_offset = self.rva2offset(self.d['EXPORT_DIRECTORY']['AddressOfNameOrdinals'])
       for i in range(self.d['EXPORT_DIRECTORY']['NumberOfNames']):
         # get RVA from array and then convert to actual offsets to get data from
-        ordinal = struct.unpack('<H', self._read(ordinal_array_offset + (i * 2), 2))[0]
-        name = self.rva2str(struct.unpack('<I', self._read(name_array_offset + (i * 4), 4))[0])
+        ordinal = struct.unpack('<H', self.read(ordinal_array_offset + (i * 2), 2))[0]
+        name = self.rva2str(struct.unpack('<I', self.read(name_array_offset + (i * 4), 4))[0])
         # find the ordinal to place this name into
         for e in exports:
           if e['ordinal'] == (ordinal + self.d['EXPORT_DIRECTORY']['Base']):
@@ -745,8 +745,8 @@ class PE(object):
         while block_offset < (block_base + reloc_block['SizeOfBlock']):
           reloc = {}
           # unpack specific relocation
-          page_offset = struct.unpack('<H', self._read(block_offset, 2))[0] & ~0xF000
-          reloc['type'] = (struct.unpack('<H', self._read(block_offset, 2))[0] & 0xF000) >> 12
+          page_offset = struct.unpack('<H', self.read(block_offset, 2))[0] & ~0xF000
+          reloc['type'] = (struct.unpack('<H', self.read(block_offset, 2))[0] & 0xF000) >> 12
           reloc['rva'] = page_offset + reloc_block['VirtualAddress']
           # goto next relocation
           block_offset += 2
@@ -778,15 +778,15 @@ class PE(object):
       data_len = abs(self.d['TLS_DIRECTORY']['EndAddressOfRawData'] - self.d['TLS_DIRECTORY']['StartAddressOfRawData'])
       if data_len:
         data_start_offset = self.rva2offset(self.va2rva(self.d['TLS_DIRECTORY']['StartAddressOfRawData']))
-        data = struct.unpack('{0}s'.format(data_len), self._read(data_start_offset, data_len))[0]
+        data = struct.unpack('{0}s'.format(data_len), self.read(data_start_offset, data_len))[0]
       # follow array and get each function pointer
       array_offset = self.rva2offset(self.va2rva(self.d['TLS_DIRECTORY']['AddressOfCallBacks']))
       while True:
         if self.b64:
-          callback = struct.unpack('<Q', self._read(array_offset, 8))[0]
+          callback = struct.unpack('<Q', self.read(array_offset, 8))[0]
           array_offset += 8
         else:
-          callback = struct.unpack('<I', self._read(array_offset, 4))[0]
+          callback = struct.unpack('<I', self.read(array_offset, 4))[0]
           array_offset += 4
         # check for null
         if callback == 0:

@@ -31,9 +31,14 @@ for f in os.listdir('tests'):
     continue
   # list holding alerts accross all rules
   alerts = []
+
   # run rules
   for r in rules.__all__:
     alerts.extend(sys.modules['rules.' + r].run(obj))
+
+  # run one rule
+  # alerts.extend(sys.modules['rules.check_entropy'].run(obj))
+
   # display any alerts
   if alerts:
     for a in alerts:
