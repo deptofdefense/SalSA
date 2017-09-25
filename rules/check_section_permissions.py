@@ -52,5 +52,5 @@ def run(peobject):
       if (s['Characteristics'] & IMAGE_SCN_MEM_SHARED):
         types.append(SECTION_SHARED)
       # generate alert
-      alerts.append(WRITABLE_CODE_ALERT.format(s['Name'], s['PointerToRawData'], s['VirtualSize'], '\n'.join(types)))
+      alerts.append(WRITABLE_CODE_ALERT.format(s['Name'], s['PointerToRawData'], s['SizeOfRawData'], '\n'.join(types)))
   return alerts
