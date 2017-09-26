@@ -1,4 +1,6 @@
 
+import os
+import re
 import copy
 import struct
 import pprint
@@ -127,8 +129,8 @@ class PE(object):
       ('Resource_size',                'I'),
       ('Exception',                    'I'),
       ('Exception_size',               'I'),
-      ('Security',                     'I'),
-      ('Security_size',                'I'),
+      ('CertificateTable',             'I'),
+      ('CertificateTable_size',        'I'),
       ('BaseRelocationTable',          'I'),
       ('BaseRelocationTable_size',     'I'),
       ('Debug',                        'I'),
@@ -147,8 +149,8 @@ class PE(object):
       ('ImportAddressTable_size',      'I'),
       ('DelayImportTable',             'I'),
       ('DelayImportTable_size',        'I'),
-      ('COMDescriptorTable',           'I'),
-      ('COMDescriptorTable_size',      'I'),
+      ('CLRRuntimeHeader',             'I'),
+      ('CLRRuntimeHeader_size',        'I'),
       ('Reserved',                     'I'),
       ('Reserved_size',                'I'),
     ]
@@ -801,3 +803,27 @@ class PE(object):
       # recurse down the resource directory
       self._parseResourceRecursive(self.d['DATA_DIRECTORY']['Resource'], rdir, '/')
     return rdir
+
+  def parse_strings(self, start=0, size=0, min_length=4):
+    """ extract strings from file starting at offset 'start'.
+        if size is -1, then the whole file is searched. """
+    result = {}
+    _lang = {
+      'ascii':    r'[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\]^_`{|}~ ]',
+      # languages are encoded in little endian for windows
+      'latin':    r'(?:[\x20-\x7E][\x00])',               # 0020-007F (includes space)
+      'cyrillic': r'(?:[\x00-\xFF][\x04]|\x20\x00)',      # 0400-04FF with space
+      'arabic':   r'(?:[\x00-\xFF][\x06]|\x20\x00)',      # 0600-06FF with space
+      'hebrew':   r'(?:[\x90-\xFF][\x05]|\x20\x00)',      # 0590-05FF with space
+      'cjk':      r'(?:[\x00-\xFF][\x4E-\x9F]|\x20\x00)', # 4E00-9FFF with space
+    }
+    # figure out target size
+    if size < 0:
+      size = os.stat(self.file.name).st_size - start
+    # extract data
+    data = self.read(start, size)
+    # extract ASCII/UTF strings accross each language set
+    for l in _lang.keys():
+      regex = re.compile('{0}{{{1},}}'.format(_lang[l], min_length).encode('ascii'))
+      result[l] = [b.decode('UTF-16LE') if (l != 'ascii') else b for b in regex.findall(data)]
+    return result

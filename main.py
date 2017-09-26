@@ -17,6 +17,15 @@ import rules
 for r in rules.__all__:
   __import__('rules.' + r)
 
+# alerts = []
+# obj = pe.PE('tests/42_m')
+# alerts.extend(sys.modules['rules.check_section_strings'].run(obj))
+# if alerts:
+#   for a in alerts:
+#     print(a)
+#     # display delimiter
+#     print('-' * 80)
+
 # open all files in tests/
 for f in os.listdir('tests'):
   # display file header
@@ -32,10 +41,10 @@ for f in os.listdir('tests'):
   # list holding alerts accross all rules
   alerts = []
 
-  # for r in rules.__all__:
-  #   alerts.extend(sys.modules['rules.' + r].run(obj))
+  for r in rules.__all__:
+    alerts.extend(sys.modules['rules.' + r].run(obj))
 
-  alerts.extend(sys.modules['rules.check_section_names'].run(obj))
+  # alerts.extend(sys.modules['rules.check_section_strings'].run(obj))
 
   # display any alerts
   if alerts:
