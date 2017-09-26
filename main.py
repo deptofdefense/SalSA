@@ -41,10 +41,10 @@ for f in os.listdir('tests'):
   # list holding alerts accross all rules
   alerts = []
 
-  for r in rules.__all__:
-    alerts.extend(sys.modules['rules.' + r].run(obj))
+  # for r in rules.__all__:
+  #   alerts.extend(sys.modules['rules.' + r].run(obj))
 
-  # alerts.extend(sys.modules['rules.check_section_strings'].run(obj))
+  alerts.extend(sys.modules['rules.check_imported_dlls'].run(obj))
 
   # display any alerts
   if alerts:
