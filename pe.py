@@ -8,340 +8,341 @@ import pprint
 
 class PE(object):
 
-  _DOS_HEADER = {
-    'len': 64, # in bytes
-    'fmt': [
-      ('e_magic',   'H'),
-      ('e_cblp',    'H'),
-      ('e_cp',      'H'),
-      ('e_crlc',    'H'),
-      ('e_cparhdr', 'H'),
-      ('e_minalloc','H'),
-      ('e_maxalloc','H'),
-      ('e_ss',      'H'),
-      ('e_sp',      'H'),
-      ('e_csum',    'H'),
-      ('e_ip',      'H'),
-      ('e_cs',      'H'),
-      ('e_lfarlc',  'H'),
-      ('e_ovno',    'H'),
-      ('e_res',     '8s'),
-      ('e_oemid',   'H'),
-      ('e_oeminfo', 'H'),
-      ('e_res2',    '20s'),
-      ('e_lfanew',  'I'),
-    ]
-  }
+  _h = {
+    'DOS_HEADER': {
+      'len': 64, # in bytes
+      'fmt': [
+        ('e_magic',   'H'),
+        ('e_cblp',    'H'),
+        ('e_cp',      'H'),
+        ('e_crlc',    'H'),
+        ('e_cparhdr', 'H'),
+        ('e_minalloc','H'),
+        ('e_maxalloc','H'),
+        ('e_ss',      'H'),
+        ('e_sp',      'H'),
+        ('e_csum',    'H'),
+        ('e_ip',      'H'),
+        ('e_cs',      'H'),
+        ('e_lfarlc',  'H'),
+        ('e_ovno',    'H'),
+        ('e_res',     '8s'),
+        ('e_oemid',   'H'),
+        ('e_oeminfo', 'H'),
+        ('e_res2',    '20s'),
+        ('e_lfanew',  'I'),
+      ]
+    },
 
-  _PE_HEADER = {
-    'len': 24, # in bytes
-    'fmt': [
-      ('Signature',           'I'),
-      ('Machine',             'H'),
-      ('NumberOfSections',    'H'),
-      ('TimeDateStamp',       'I'),
-      ('PointerToSymbolTable','I'),
-      ('NumberOfSymbols',     'I'),
-      ('SizeOfOptionalHeader','H'),
-      ('Characteristics',     'H'),
-    ]
-  }
+    'PE_HEADER': {
+      'len': 24, # in bytes
+      'fmt': [
+        ('Signature',           'I'),
+        ('Machine',             'H'),
+        ('NumberOfSections',    'H'),
+        ('TimeDateStamp',       'I'),
+        ('PointerToSymbolTable','I'),
+        ('NumberOfSymbols',     'I'),
+        ('SizeOfOptionalHeader','H'),
+        ('Characteristics',     'H'),
+      ]
+    },
 
-  _32_IMAGE_HEADER = {
-    'len': 96, # in bytes
-    'fmt': [
-      ('Magic',                      'H'),
-      ('MajorLinkerVersion',         'B'),
-      ('MinorLinkerVersion',         'B'),
-      ('SizeOfCode',                 'I'),
-      ('SizeOfInitializedData',      'I'),
-      ('SizeOfUninitializedData',    'I'),
-      ('AddressOfEntryPoint',        'I'),
-      ('BaseOfCode',                 'I'),
-      ('BaseOfData',                 'I'),
-      ('ImageBase',                  'I'),
-      ('SectionAlignment',           'I'),
-      ('FileAlignment',              'I'),
-      ('MajorOperatingSystemVersion','H'),
-      ('MinorOperatingSystemVersion','H'),
-      ('MajorImageVersion',          'H'),
-      ('MinorImageVersion',          'H'),
-      ('MajorSubsystemVersion',      'H'),
-      ('MinorSubsystemVersion',      'H'),
-      ('Win32VersionValue',          'I'),
-      ('SizeOfImage',                'I'),
-      ('SizeOfHeaders',              'I'),
-      ('CheckSum',                   'I'),
-      ('Subsystem',                  'H'),
-      ('DllCharacteristics',         'H'),
-      ('SizeOfStackReserve',         'I'),
-      ('SizeOfStackCommit',          'I'),
-      ('SizeOfHeapReserve',          'I'),
-      ('SizeOfHeapCommit',           'I'),
-      ('LoaderFlags',                'I'),
-      ('NumberOfRvaAndSizes',        'I'),
-    ]
-  }
+    'IMAGE_HEADER_32': {
+      'len': 96, # in bytes
+      'fmt': [
+        ('Magic',                      'H'),
+        ('MajorLinkerVersion',         'B'),
+        ('MinorLinkerVersion',         'B'),
+        ('SizeOfCode',                 'I'),
+        ('SizeOfInitializedData',      'I'),
+        ('SizeOfUninitializedData',    'I'),
+        ('AddressOfEntryPoint',        'I'),
+        ('BaseOfCode',                 'I'),
+        ('BaseOfData',                 'I'),
+        ('ImageBase',                  'I'),
+        ('SectionAlignment',           'I'),
+        ('FileAlignment',              'I'),
+        ('MajorOperatingSystemVersion','H'),
+        ('MinorOperatingSystemVersion','H'),
+        ('MajorImageVersion',          'H'),
+        ('MinorImageVersion',          'H'),
+        ('MajorSubsystemVersion',      'H'),
+        ('MinorSubsystemVersion',      'H'),
+        ('Win32VersionValue',          'I'),
+        ('SizeOfImage',                'I'),
+        ('SizeOfHeaders',              'I'),
+        ('CheckSum',                   'I'),
+        ('Subsystem',                  'H'),
+        ('DllCharacteristics',         'H'),
+        ('SizeOfStackReserve',         'I'),
+        ('SizeOfStackCommit',          'I'),
+        ('SizeOfHeapReserve',          'I'),
+        ('SizeOfHeapCommit',           'I'),
+        ('LoaderFlags',                'I'),
+        ('NumberOfRvaAndSizes',        'I'),
+      ]
+    },
 
-  _64_IMAGE_HEADER = {
-    'len': 112, # in bytes
-    'fmt': [
-      ('Magic',                      'H'),
-      ('MajorLinkerVersion',         'B'),
-      ('MinorLinkerVersion',         'B'),
-      ('SizeOfCode',                 'I'),
-      ('SizeOfInitializedData',      'I'),
-      ('SizeOfUninitializedData',    'I'),
-      ('AddressOfEntryPoint',        'I'),
-      ('BaseOfCode',                 'I'),
-      ('ImageBase',                  'Q'),
-      ('SectionAlignment',           'I'),
-      ('FileAlignment',              'I'),
-      ('MajorOperatingSystemVersion','H'),
-      ('MinorOperatingSystemVersion','H'),
-      ('MajorImageVersion',          'H'),
-      ('MinorImageVersion',          'H'),
-      ('MajorSubsystemVersion',      'H'),
-      ('MinorSubsystemVersion',      'H'),
-      ('Win32VersionValue',          'I'),
-      ('SizeOfImage',                'I'),
-      ('SizeOfHeaders',              'I'),
-      ('CheckSum',                   'I'),
-      ('Subsystem',                  'H'),
-      ('DllCharacteristics',         'H'),
-      ('SizeOfStackReserve',         'Q'),
-      ('SizeOfStackCommit',          'Q'),
-      ('SizeOfHeapReserve',          'Q'),
-      ('SizeOfHeapCommit',           'Q'),
-      ('LoaderFlags',                'I'),
-      ('NumberOfRvaAndSizes',        'I'),
-    ]
-  }
+    'IMAGE_HEADER_64': {
+      'len': 112, # in bytes
+      'fmt': [
+        ('Magic',                      'H'),
+        ('MajorLinkerVersion',         'B'),
+        ('MinorLinkerVersion',         'B'),
+        ('SizeOfCode',                 'I'),
+        ('SizeOfInitializedData',      'I'),
+        ('SizeOfUninitializedData',    'I'),
+        ('AddressOfEntryPoint',        'I'),
+        ('BaseOfCode',                 'I'),
+        ('ImageBase',                  'Q'),
+        ('SectionAlignment',           'I'),
+        ('FileAlignment',              'I'),
+        ('MajorOperatingSystemVersion','H'),
+        ('MinorOperatingSystemVersion','H'),
+        ('MajorImageVersion',          'H'),
+        ('MinorImageVersion',          'H'),
+        ('MajorSubsystemVersion',      'H'),
+        ('MinorSubsystemVersion',      'H'),
+        ('Win32VersionValue',          'I'),
+        ('SizeOfImage',                'I'),
+        ('SizeOfHeaders',              'I'),
+        ('CheckSum',                   'I'),
+        ('Subsystem',                  'H'),
+        ('DllCharacteristics',         'H'),
+        ('SizeOfStackReserve',         'Q'),
+        ('SizeOfStackCommit',          'Q'),
+        ('SizeOfHeapReserve',          'Q'),
+        ('SizeOfHeapCommit',           'Q'),
+        ('LoaderFlags',                'I'),
+        ('NumberOfRvaAndSizes',        'I'),
+      ]
+    },
 
-  _DATA_DIRECTORY = {
-    'len': 128, # in bytes
-    'fmt': [
-      ('Export',                       'I'),
-      ('Export_size',                  'I'),
-      ('Import',                       'I'),
-      ('Import_size',                  'I'),
-      ('Resource',                     'I'),
-      ('Resource_size',                'I'),
-      ('Exception',                    'I'),
-      ('Exception_size',               'I'),
-      ('CertificateTable',             'I'),
-      ('CertificateTable_size',        'I'),
-      ('BaseRelocationTable',          'I'),
-      ('BaseRelocationTable_size',     'I'),
-      ('Debug',                        'I'),
-      ('Debug_size',                   'I'),
-      ('ArchitectureSpecificData',     'I'),
-      ('ArchitectureSpecificData_size','I'),
-      ('GlobalPointerRegister',        'I'),
-      ('GlobalPointerRegister_size',   'I'),
-      ('ThreadLocalStorage',           'I'),
-      ('ThreadLocalStorage_size',      'I'),
-      ('LoadConfiguration',            'I'),
-      ('LoadConfiguration_size',       'I'),
-      ('BoundImport',                  'I'),
-      ('BoundImport_size',             'I'),
-      ('ImportAddressTable',           'I'),
-      ('ImportAddressTable_size',      'I'),
-      ('DelayImportTable',             'I'),
-      ('DelayImportTable_size',        'I'),
-      ('CLRRuntimeHeader',             'I'),
-      ('CLRRuntimeHeader_size',        'I'),
-      ('Reserved',                     'I'),
-      ('Reserved_size',                'I'),
-    ]
-  }
+    'DATA_DIRECTORY': {
+      'len': 128, # in bytes
+      'fmt': [
+        ('Export',                       'I'),
+        ('Export_size',                  'I'),
+        ('Import',                       'I'),
+        ('Import_size',                  'I'),
+        ('Resource',                     'I'),
+        ('Resource_size',                'I'),
+        ('Exception',                    'I'),
+        ('Exception_size',               'I'),
+        ('CertificateTable',             'I'),
+        ('CertificateTable_size',        'I'),
+        ('BaseRelocationTable',          'I'),
+        ('BaseRelocationTable_size',     'I'),
+        ('Debug',                        'I'),
+        ('Debug_size',                   'I'),
+        ('ArchitectureSpecificData',     'I'),
+        ('ArchitectureSpecificData_size','I'),
+        ('GlobalPointerRegister',        'I'),
+        ('GlobalPointerRegister_size',   'I'),
+        ('ThreadLocalStorage',           'I'),
+        ('ThreadLocalStorage_size',      'I'),
+        ('LoadConfiguration',            'I'),
+        ('LoadConfiguration_size',       'I'),
+        ('BoundImport',                  'I'),
+        ('BoundImport_size',             'I'),
+        ('ImportAddressTable',           'I'),
+        ('ImportAddressTable_size',      'I'),
+        ('DelayImportTable',             'I'),
+        ('DelayImportTable_size',        'I'),
+        ('CLRRuntimeHeader',             'I'),
+        ('CLRRuntimeHeader_size',        'I'),
+        ('Reserved',                     'I'),
+        ('Reserved_size',                'I'),
+      ]
+    },
 
-  _SECTION_HEADER = {
-    'len': 40, # in bytes
-    'fmt': [
-      ('Name',                '8s'),
-      ('VirtualSize',         'I'),
-      ('VirtualAddress',      'I'),
-      ('SizeOfRawData',       'I'),
-      ('PointerToRawData',    'I'),
-      ('PointerToRelocations','I'),
-      ('PointerToLinenumbers','I'),
-      ('NumberOfRelocations', 'H'),
-      ('NumberOfLinenumbers', 'H'),
-      ('Characteristics',     'I'),
-    ]
-  }
+    'SECTION_HEADER': {
+      'len': 40, # in bytes
+      'fmt': [
+        ('Name',                '8s'),
+        ('VirtualSize',         'I'),
+        ('VirtualAddress',      'I'),
+        ('SizeOfRawData',       'I'),
+        ('PointerToRawData',    'I'),
+        ('PointerToRelocations','I'),
+        ('PointerToLinenumbers','I'),
+        ('NumberOfRelocations', 'H'),
+        ('NumberOfLinenumbers', 'H'),
+        ('Characteristics',     'I'),
+      ]
+    },
 
-  _EXPORT_DIRECTORY = {
-    'len': 40, # in bytes
-    'fmt': [
-      ('Characteristics',      'I'),
-      ('TimeDateStamp',        'I'),
-      ('MajorVersion',         'H'),
-      ('MinorVersion',         'H'),
-      ('Name',                 'I'),
-      ('Base',                 'I'),
-      ('NumberOfFunctions',    'I'),
-      ('NumberOfNames',        'I'),
-      ('AddressOfFunctions',   'I'),
-      ('AddressOfNames',       'I'),
-      ('AddressOfNameOrdinals','I'),
-    ]
-  }
+    'EXPORT_DIRECTORY': {
+      'len': 40, # in bytes
+      'fmt': [
+        ('Characteristics',      'I'),
+        ('TimeDateStamp',        'I'),
+        ('MajorVersion',         'H'),
+        ('MinorVersion',         'H'),
+        ('Name',                 'I'),
+        ('Base',                 'I'),
+        ('NumberOfFunctions',    'I'),
+        ('NumberOfNames',        'I'),
+        ('AddressOfFunctions',   'I'),
+        ('AddressOfNames',       'I'),
+        ('AddressOfNameOrdinals','I'),
+      ]
+    },
 
-  _DEBUG_DIRECTORY = {
-    'len': 28, # in bytes
-    'fmt': [
-      ('Characteristics', 'I'),
-      ('TimeDateStamp',   'I'),
-      ('MajorVersion',    'H'),
-      ('MinorVersion',    'H'),
-      ('Type',            'I'),
-      ('SizeOfData',      'I'),
-      ('AddressOfRawData','I'),
-      ('PointerToRawData','I'),
-    ]
-  }
+    'DEBUG_DIRECTORY': {
+      'len': 28, # in bytes
+      'fmt': [
+        ('Characteristics', 'I'),
+        ('TimeDateStamp',   'I'),
+        ('MajorVersion',    'H'),
+        ('MinorVersion',    'H'),
+        ('Type',            'I'),
+        ('SizeOfData',      'I'),
+        ('AddressOfRawData','I'),
+        ('PointerToRawData','I'),
+      ]
+    },
 
-  _IMPORT_DESCRIPTOR = {
-    'len': 20, # in bytes
-    'fmt': [
-      ('OriginalFirstThunk','I'),
-      ('TimeDateStamp',     'I'),
-      ('ForwarderChain',    'I'),
-      ('Name',              'I'),
-      ('FirstThunk',        'I'),
-    ]
-  }
+    'IMPORT_DESCRIPTOR': {
+      'len': 20, # in bytes
+      'fmt': [
+        ('OriginalFirstThunk','I'),
+        ('TimeDateStamp',     'I'),
+        ('ForwarderChain',    'I'),
+        ('Name',              'I'),
+        ('FirstThunk',        'I'),
+      ]
+    },
 
-  _DELAY_IMPORT_DESCRIPTOR = {
-    'len': 32, # in bytes
-    'fmt': [
-      ('Attributes',             'I'),
-      ('Name',                   'I'),
-      ('ModuleHandle',           'I'),
-      ('ImportAddressTable',     'I'),
-      ('ImportNameTable',        'I'),
-      ('BoundImportAddressTable','I'),
-      ('UnloadInformationTable', 'I'),
-      ('TimeDateStamp',          'I'),
-    ]
-  }
+    'DELAY_IMPORT_DESCRIPTOR': {
+      'len': 32, # in bytes
+      'fmt': [
+        ('Attributes',             'I'),
+        ('Name',                   'I'),
+        ('ModuleHandle',           'I'),
+        ('ImportAddressTable',     'I'),
+        ('ImportNameTable',        'I'),
+        ('BoundImportAddressTable','I'),
+        ('UnloadInformationTable', 'I'),
+        ('TimeDateStamp',          'I'),
+      ]
+    },
 
-  _BOUND_IMPORT_DESCRIPTOR = {
-    'len': 8, # in bytes
-    'fmt': [
-      ('TimeDateStamp',              'I'),
-      ('OffsetModuleName',           'H'),
-      ('NumberOfModuleForwarderRefs','H'),
-    ]
-  }
+    'BOUND_IMPORT_DESCRIPTOR': {
+      'len': 8, # in bytes
+      'fmt': [
+        ('TimeDateStamp',              'I'),
+        ('OffsetModuleName',           'H'),
+        ('NumberOfModuleForwarderRefs','H'),
+      ]
+    },
 
-  _BASE_RELOCATION = {
-    'len': 8, # in bytes
-    'fmt': [
-      ('VirtualAddress','I'),
-      ('SizeOfBlock',   'I'),
-    ]
-  }
+    'BASE_RELOCATION': {
+      'len': 8, # in bytes
+      'fmt': [
+        ('VirtualAddress','I'),
+        ('SizeOfBlock',   'I'),
+      ]
+    },
 
-  _EXCEPTION_FUNCTION_ENTRY = {
-    'len': 12, # in bytes
-    'fmt': [
-      ('StartingAddress',  'I'),
-      ('EndingAddress',    'I'),
-      ('UnwindInfoAddress','I'),
-    ]
-  }
+    'EXCEPTION_FUNCTION_ENTRY': {
+      'len': 12, # in bytes
+      'fmt': [
+        ('StartingAddress',  'I'),
+        ('EndingAddress',    'I'),
+        ('UnwindInfoAddress','I'),
+      ]
+    },
 
-  _32_TLS_DIRECTORY = {
-    'len': 24, # in bytes
-    'fmt': [
-      ('StartAddressOfRawData','I'),
-      ('EndAddressOfRawData',  'I'),
-      ('AddressOfIndex',       'I'),
-      ('AddressOfCallBacks',   'I'),
-      ('SizeOfZeroFill',       'I'),
-      ('Characteristics',      'I'),
-    ]
-  }
+    'TLS_DIRECTORY_32': {
+      'len': 24, # in bytes
+      'fmt': [
+        ('StartAddressOfRawData','I'),
+        ('EndAddressOfRawData',  'I'),
+        ('AddressOfIndex',       'I'),
+        ('AddressOfCallBacks',   'I'),
+        ('SizeOfZeroFill',       'I'),
+        ('Characteristics',      'I'),
+      ]
+    },
 
-  _64_TLS_DIRECTORY = {
-    'len': 40, # in bytes
-    'fmt': [
-      ('StartAddressOfRawData','Q'),
-      ('EndAddressOfRawData',  'Q'),
-      ('AddressOfIndex',       'Q'),
-      ('AddressOfCallBacks',   'Q'),
-      ('SizeOfZeroFill',       'I'),
-      ('Characteristics',      'I'),
-    ]
-  }
+    'TLS_DIRECTORY_64': {
+      'len': 40, # in bytes
+      'fmt': [
+        ('StartAddressOfRawData','Q'),
+        ('EndAddressOfRawData',  'Q'),
+        ('AddressOfIndex',       'Q'),
+        ('AddressOfCallBacks',   'Q'),
+        ('SizeOfZeroFill',       'I'),
+        ('Characteristics',      'I'),
+      ]
+    },
 
-  _32_LOAD_CONFIG_DIRECTORY = {
-    'len': 72, # in bytes
-    'fmt': [
-      ('Size',                         'I'),
-      ('TimeDateStamp',                'I'),
-      ('MajorVersion',                 'H'),
-      ('MinorVersion',                 'H'),
-      ('GlobalFlagsClear',             'I'),
-      ('GlobalFlagsSet',               'I'),
-      ('CriticalSectionDefaultTimeout','I'),
-      ('DeCommitFreeBlockThreshold',   'I'),
-      ('DeCommitTotalFreeThreshold',   'I'),
-      ('LockPrefixTable',              'I'),
-      ('MaximumAllocationSize',        'I'),
-      ('VirtualMemoryThreshold',       'I'),
-      ('ProcessHeapFlags',             'I'),
-      ('ProcessAffinityMask',          'I'),
-      ('CSDVersion',                   'H'),
-      ('Reserved1',                    'H'),
-      ('EditList',                     'I'),
-      ('SecurityCookie',               'I'),
-      ('SEHandlerTable',               'I'),
-      ('SEHandlerCount',               'I'),
-    ]
-  }
+    'LOAD_CONFIG_DIRECTORY_32': {
+      'len': 72, # in bytes
+      'fmt': [
+        ('Size',                         'I'),
+        ('TimeDateStamp',                'I'),
+        ('MajorVersion',                 'H'),
+        ('MinorVersion',                 'H'),
+        ('GlobalFlagsClear',             'I'),
+        ('GlobalFlagsSet',               'I'),
+        ('CriticalSectionDefaultTimeout','I'),
+        ('DeCommitFreeBlockThreshold',   'I'),
+        ('DeCommitTotalFreeThreshold',   'I'),
+        ('LockPrefixTable',              'I'),
+        ('MaximumAllocationSize',        'I'),
+        ('VirtualMemoryThreshold',       'I'),
+        ('ProcessHeapFlags',             'I'),
+        ('ProcessAffinityMask',          'I'),
+        ('CSDVersion',                   'H'),
+        ('Reserved1',                    'H'),
+        ('EditList',                     'I'),
+        ('SecurityCookie',               'I'),
+        ('SEHandlerTable',               'I'),
+        ('SEHandlerCount',               'I'),
+      ]
+    },
 
-  _64_LOAD_CONFIG_DIRECTORY = {
-    'len': 112, # in bytes
-    'fmt': [
-      ('Size',                         'I'),
-      ('TimeDateStamp',                'I'),
-      ('MajorVersion',                 'H'),
-      ('MinorVersion',                 'H'),
-      ('GlobalFlagsClear',             'I'),
-      ('GlobalFlagsSet',               'I'),
-      ('CriticalSectionDefaultTimeout','I'),
-      ('DeCommitFreeBlockThreshold',   'Q'),
-      ('DeCommitTotalFreeThreshold',   'Q'),
-      ('LockPrefixTable',              'Q'),
-      ('MaximumAllocationSize',        'Q'),
-      ('VirtualMemoryThreshold',       'Q'),
-      ('ProcessAffinityMask',          'Q'),
-      ('ProcessHeapFlags',             'I'),
-      ('CSDVersion',                   'H'),
-      ('Reserved1',                    'H'),
-      ('EditList',                     'Q'),
-      ('SecurityCookie',               'Q'),
-      ('SEHandlerTable',               'Q'),
-      ('SEHandlerCount',               'Q'),
-    ]
-  }
+    'LOAD_CONFIG_DIRECTORY_64': {
+      'len': 112, # in bytes
+      'fmt': [
+        ('Size',                         'I'),
+        ('TimeDateStamp',                'I'),
+        ('MajorVersion',                 'H'),
+        ('MinorVersion',                 'H'),
+        ('GlobalFlagsClear',             'I'),
+        ('GlobalFlagsSet',               'I'),
+        ('CriticalSectionDefaultTimeout','I'),
+        ('DeCommitFreeBlockThreshold',   'Q'),
+        ('DeCommitTotalFreeThreshold',   'Q'),
+        ('LockPrefixTable',              'Q'),
+        ('MaximumAllocationSize',        'Q'),
+        ('VirtualMemoryThreshold',       'Q'),
+        ('ProcessAffinityMask',          'Q'),
+        ('ProcessHeapFlags',             'I'),
+        ('CSDVersion',                   'H'),
+        ('Reserved1',                    'H'),
+        ('EditList',                     'Q'),
+        ('SecurityCookie',               'Q'),
+        ('SEHandlerTable',               'Q'),
+        ('SEHandlerCount',               'Q'),
+      ]
+    },
 
-  _RESOURCE_DIRECTORY = {
-    'len': 16, # in bytes
-    'fmt': [
-      ('Characteristics',     'I'),
-      ('TimeDateStamp',       'I'),
-      ('MajorVersion',        'H'),
-      ('MinorVersion',        'H'),
-      ('NumberOfNamedEntries','H'),
-      ('NumberOfIdEntries',   'H'),
-    ]
+    'RESOURCE_DIRECTORY': {
+      'len': 16, # in bytes
+      'fmt': [
+        ('Characteristics',     'I'),
+        ('TimeDateStamp',       'I'),
+        ('MajorVersion',        'H'),
+        ('MinorVersion',        'H'),
+        ('NumberOfNamedEntries','H'),
+        ('NumberOfIdEntries',   'H'),
+      ]
+    },
   }
-
 
   def __init__(self, filename):
     """ extract PE file piece by piece """
@@ -352,19 +353,19 @@ class PE(object):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse DOS header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    self._unpack(self._DOS_HEADER, self.d, 'DOS_HEADER', offset)
+    self.d['DOS_HEADER'] = self._unpack(self._h['DOS_HEADER'], offset)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # extract DOS stub
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    stub_len = self.d['DOS_HEADER']['e_lfanew'] - self._DOS_HEADER['len']
-    stub_program = self.read(self._DOS_HEADER['len'], stub_len)
+    stub_len = self.d['DOS_HEADER']['e_lfanew'] - self._h['DOS_HEADER']['len']
+    stub_program = self.read(self._h['DOS_HEADER']['len'], stub_len)
     self.d['DOS_STUB'] = struct.unpack('{0}s'.format(stub_len), stub_program)[0]
     offset += self.d['DOS_HEADER']['e_lfanew']
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse PE header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-    self._unpack(self._PE_HEADER, self.d, 'PE_HEADER', offset)
-    offset += self._PE_HEADER['len']
+    self.d['PE_HEADER'] = self._unpack(self._h['PE_HEADER'], offset)
+    offset += self._h['PE_HEADER']['len']
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse optional image header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -372,22 +373,22 @@ class PE(object):
       if struct.unpack('<H', self.read(offset, 2))[0] == 0x20b:
         # parse 64 bit binary
         self.b64 = True
-        self._unpack(self._64_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
-        offset += self._64_IMAGE_HEADER['len']
+        self.d['IMAGE_HEADER'] = self._unpack(self._h['IMAGE_HEADER_64'], offset)
+        offset += self._h['IMAGE_HEADER_64']['len']
       else:
         # parse 32 bit binary (0x10b)
-        self._unpack(self._32_IMAGE_HEADER, self.d, 'IMAGE_HEADER', offset)
-        offset += self._32_IMAGE_HEADER['len']
+        self.d['IMAGE_HEADER'] = self._unpack(self._h['IMAGE_HEADER_32'], offset)
+        offset += self._h['IMAGE_HEADER_32']['len']
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # parse data directory (number of directories varies by compiler)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       num_dirs = self.d['IMAGE_HEADER']['NumberOfRvaAndSizes']
       dirs_fmt = {
          # only parse data directories we have specified/understand
-        'len': min(num_dirs * 8, self._DATA_DIRECTORY['len']),
-        'fmt': self._DATA_DIRECTORY['fmt'][:min((num_dirs * 2), len(self._DATA_DIRECTORY['fmt']))]
+        'len': min(num_dirs * 8, self._h['DATA_DIRECTORY']['len']),
+        'fmt': self._h['DATA_DIRECTORY']['fmt'][:min((num_dirs * 2), len(self._h['DATA_DIRECTORY']['fmt']))]
       }
-      self._unpack(dirs_fmt, self.d, 'DATA_DIRECTORY', offset)
+      self.d['DATA_DIRECTORY'] = self._unpack(dirs_fmt, offset)
       offset += dirs_fmt['len']
     else:
       self.d['IMAGE_HEADER'] = {}
@@ -397,12 +398,11 @@ class PE(object):
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     self.d['SECTIONS'] = []
     for i in range(self.d['PE_HEADER']['NumberOfSections']):
-      section = {}
-      self._unpack(self._SECTION_HEADER, section, 'data', offset)
+      section = self._unpack(self._h['SECTION_HEADER'], offset)
       # fix section name to remove null byte padding
-      section['data']['Name'] = section['data']['Name'].replace('\x00', '')
-      offset += self._SECTION_HEADER['len']
-      self.d['SECTIONS'].append(section['data'])
+      section['Name'] = section['Name'].replace('\x00', '')
+      offset += self._h['SECTION_HEADER']['len']
+      self.d['SECTIONS'].append(section)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # extract data directory entries (some not publicly documented...)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -411,34 +411,31 @@ class PE(object):
       # debug directory (.debug)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Debug_size'] > 0:
-        self._unpack(self._DEBUG_DIRECTORY, self.d, 'DEBUG_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['Debug']))
+        self.d['DEBUG_DIRECTORY'] = self._unpack(self._h['DEBUG_DIRECTORY'], self.rva2offset(self.d['DATA_DIRECTORY']['Debug']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # export directory (.edata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Export_size'] > 0:
-        self._unpack(self._EXPORT_DIRECTORY, self.d, 'EXPORT_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['Export']))
+        self.d['EXPORT_DIRECTORY'] = self._unpack(self._h['EXPORT_DIRECTORY'], self.rva2offset(self.d['DATA_DIRECTORY']['Export']))
         # get actual export file name from RVA
         self.d['EXPORT_DIRECTORY']['Name'] = self.rva2str(self.d['EXPORT_DIRECTORY']['Name'])
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # import directory (.idata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Import_size'] > 0:
-        import_desc = {}
         self.d['IMPORT_DIRECTORY'] = []
         import_desc_offset = self.rva2offset(self.d['DATA_DIRECTORY']['Import'])
         # unpack each import descriptor entry
         while True:
-          self._unpack(self._IMPORT_DESCRIPTOR, import_desc, 'data', import_desc_offset)
+          import_desc = self._unpack(self._h['IMPORT_DESCRIPTOR'], import_desc_offset)
           # check for empty entry
-          if import_desc['data']['OriginalFirstThunk'] == 0:
+          if import_desc['OriginalFirstThunk'] == 0:
             break
           # resolve the name of the import descriptor
-          import_desc['data']['Name'] = self.rva2str(import_desc['data']['Name'])
-          self.d['IMPORT_DIRECTORY'].append(import_desc['data'])
+          import_desc['Name'] = self.rva2str(import_desc['Name'])
+          self.d['IMPORT_DIRECTORY'].append(import_desc)
           # go to the next descriptor
-          import_desc_offset += self._IMPORT_DESCRIPTOR['len']
+          import_desc_offset += self._h['IMPORT_DESCRIPTOR']['len']
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # bound import directory (.idata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -447,18 +444,16 @@ class PE(object):
         bound_import_offset = self.rva2offset(self.d['DATA_DIRECTORY']['BoundImport'])
         # unpack array of BOUND_IMPORT_DESCRIPTORs
         while True:
-          bound_import_desc = {}
-          self._unpack(self._BOUND_IMPORT_DESCRIPTOR, bound_import_desc, 'data', bound_import_offset)
+          bound_import_desc = self._unpack(self._h['BOUND_IMPORT_DESCRIPTOR'], bound_import_offset)
           # check for null terminator
-          if bound_import_desc['data']['TimeDateStamp'] == 0:
+          if bound_import_desc['TimeDateStamp'] == 0:
             break
           # goto next descriptor
-          bound_import_offset += self._BOUND_IMPORT_DESCRIPTOR['len']
+          bound_import_offset += self._h['BOUND_IMPORT_DESCRIPTOR']['len']
           # replace name field with actual string
-          bound_import_desc['data']['OffsetModuleName'] = self.rva2str(self.d['DATA_DIRECTORY']['BoundImport'] +
-                                                                       bound_import_desc['data']['OffsetModuleName'])
+          bound_import_desc['OffsetModuleName'] = self.rva2str(self.d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['OffsetModuleName'])
           # add to class dictionary
-          self.d['BOUND_IMPORTS_DIRECTORY'].append(bound_import_desc['data'])
+          self.d['BOUND_IMPORTS_DIRECTORY'].append(bound_import_desc)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # relocation directory (.reloc)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -468,12 +463,11 @@ class PE(object):
         block_offset = base_offset
         # unpack array of BASE_RELOCATION
         while block_offset < (base_offset + self.d['DATA_DIRECTORY']['BaseRelocationTable_size']):
-          reloc_entry = {}
-          self._unpack(self._BASE_RELOCATION, reloc_entry, 'data', block_offset)
+          reloc_entry = self._unpack(self._h['BASE_RELOCATION'], block_offset)
           # goto next descriptor
-          block_offset += reloc_entry['data']['SizeOfBlock']
+          block_offset += reloc_entry['SizeOfBlock']
           # add to class dictionary
-          self.d['RELOCATION_DIRECTORY'].append(reloc_entry['data'])
+          self.d['RELOCATION_DIRECTORY'].append(reloc_entry)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # exception directory (.pdata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -484,56 +478,49 @@ class PE(object):
         # unpack array of EXCEPTION_FUNCTION_ENTRY
         base_offset = entry_offset
         while entry_offset < (base_offset + self.d['DATA_DIRECTORY']['Exception_size']):
-          exception_entry = {}
-          self._unpack(self._EXCEPTION_FUNCTION_ENTRY, exception_entry, 'data', entry_offset)
+          exception_entry = self._unpack(self._h['EXCEPTION_FUNCTION_ENTRY'], entry_offset)
           # goto next entry
-          entry_offset += self._EXCEPTION_FUNCTION_ENTRY['len']
+          entry_offset += self._h['EXCEPTION_FUNCTION_ENTRY']['len']
           # add to class dictionary
-          self.d['EXCEPTION_DIRECTORY'].append(exception_entry['data'])
+          self.d['EXCEPTION_DIRECTORY'].append(exception_entry)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # TLS directory (.tls)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
         if self.b64:
-          self._unpack(self._64_TLS_DIRECTORY, self.d, 'TLS_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
+          self.d['TLS_DIRECTORY'] = self._unpack(self._h['TLS_DIRECTORY_64'], self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
         else:
-          self._unpack(self._32_TLS_DIRECTORY, self.d, 'TLS_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
+          self.d['TLS_DIRECTORY'] = self._unpack(self._h['TLS_DIRECTORY_32'], self.rva2offset(self.d['DATA_DIRECTORY']['ThreadLocalStorage']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # delay imports directory (.idata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['DelayImportTable_size'] > 0:
-        import_desc = {}
         self.d['DELAY_IMPORT_DIRECTORY'] = []
         import_desc_offset = self.rva2offset(self.d['DATA_DIRECTORY']['DelayImportTable'])
         # unpack each delay import descriptor entry
         while True:
-          self._unpack(self._DELAY_IMPORT_DESCRIPTOR, import_desc, 'data', import_desc_offset)
+          import_desc = self._unpack(self._h['DELAY_IMPORT_DESCRIPTOR'], import_desc_offset)
           # check for empty entry
-          if import_desc['data']['Name'] == 0:
+          if import_desc['Name'] == 0:
             break
           # resolve the name of the import descriptor
-          import_desc['data']['Name'] = self.rva2str(import_desc['data']['Name'])
-          self.d['DELAY_IMPORT_DIRECTORY'].append(import_desc['data'])
+          import_desc['Name'] = self.rva2str(import_desc['Name'])
+          self.d['DELAY_IMPORT_DIRECTORY'].append(import_desc)
           # go to the next descriptor
-          import_desc_offset += self._DELAY_IMPORT_DESCRIPTOR['len']
+          import_desc_offset += self._h['DELAY_IMPORT_DESCRIPTOR']['len']
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # configuration directory (.rdata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['LoadConfiguration_size'] > 0:
         if self.b64:
-          self._unpack(self._64_LOAD_CONFIG_DIRECTORY, self.d, 'LOAD_CONFIG_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['LoadConfiguration']))
+          self.d['LOAD_CONFIG_DIRECTORY'] = self._unpack(self._h['LOAD_CONFIG_DIRECTORY_64'], self.rva2offset(self.d['DATA_DIRECTORY']['LoadConfiguration']))
         else:
-          self._unpack(self._32_LOAD_CONFIG_DIRECTORY, self.d, 'LOAD_CONFIG_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['LoadConfiguration']))
+          self.d['LOAD_CONFIG_DIRECTORY'] = self._unpack(self._h['LOAD_CONFIG_DIRECTORY_32'], self.rva2offset(self.d['DATA_DIRECTORY']['LoadConfiguration']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # configuration directory (.rsrc)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       if self.d['DATA_DIRECTORY']['Resource_size'] > 0:
-        self._unpack(self._RESOURCE_DIRECTORY, self.d, 'RESOURCE_DIRECTORY',
-                     self.rva2offset(self.d['DATA_DIRECTORY']['Resource']))
+        self.d['RESOURCE_DIRECTORY'] =  self._unpack(self._h['RESOURCE_DIRECTORY'], self.rva2offset(self.d['DATA_DIRECTORY']['Resource']))
 
   def __str__(self):
     """ format internals as hex strings """
@@ -541,13 +528,24 @@ class PE(object):
     self._fmt2hex(output)
     return pprint.pformat(output)
 
-  def _unpack(self, src, dst, key, offset):
+  def _unpack(self, src, offset):
     """ internal function to unpack a given struct/header into an array of bytes """
-    dst[key] = {}
+    dst = {}
     self.file.seek(offset)
-    raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self.read(offset, src['len']))
-    for i in range(len(raw)):
-      dst[key][src['fmt'][i][0]] = raw[i]
+    try:
+      raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self.read(offset, src['len']))
+      for i in range(len(raw)):
+        dst[src['fmt'][i][0]] = raw[i]
+    except:
+      # set dst to empty values
+      raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), b'\x00' * src['len'])
+      for i in range(len(raw)):
+        dst[src['fmt'][i][0]] = raw[i]
+      # get header name we were trying to unpack
+      h = [x for x in self._h if self._h[x] is src][0]
+      print('[-] !!WARNING!! Failed to unpack struct {0} at file offset {1}. Possible malformed PE file or malicious tampering.'.format(h, hex(offset)))
+    finally:
+      return dst
 
   def _fmt2hex(self, d):
     """ format dictionary 'd' into a readable hex format """
@@ -598,12 +596,12 @@ class PE(object):
   def _parseResourceRecursive(self, dir_rva, nodes, path):
     """ take a base RVA to an _RESOURCE_DIRECTORY and extract
         all RESOURCE_ENTRYs inside recursively into nodes """
-    # get info from _RESOURCE_DIRECTORY
+    # get info from RESOURCE_DIRECTORY
     base = self.rva2offset(dir_rva)
     num_names = struct.unpack('<H', self.read(base + 12, 2))[0]
     num_ids = struct.unpack('<H', self.read(base + 14, 2))[0]
     # parse each RESOURCE_DIRECTORY_ENTRY
-    entry_offset = base + self._RESOURCE_DIRECTORY['len']
+    entry_offset = base + self._h['RESOURCE_DIRECTORY']['len']
     for i in range(num_names + num_ids):
       # extract Name and OffsetToData for this RESOURCE_DIRECTORY_ENTRY
       ename =  struct.unpack('<I', self.read(entry_offset, 4))[0]
@@ -664,7 +662,7 @@ class PE(object):
     for section in self.d['SECTIONS']:
       if (section['VirtualAddress'] <= rva) and (rva < (section['VirtualAddress'] + section['VirtualSize'])):
         return section['PointerToRawData'] + (rva - section['VirtualAddress'])
-    print('[-] WARNING: Relative Virtual Address: ' + hex(rva) + ' does not fall inside any specified section')
+    print('[-] !!WARNING!! Relative Virtual Address: ' + hex(rva) + ' does not fall inside specified sections. Possible malformed PE file or malicious tampering.')
     return 0
 
   def va2rva(self, va):
@@ -743,7 +741,7 @@ class PE(object):
         reloc_entries = []
         # parse all relocations within the current block
         block_base = block_offset
-        block_offset += self._BASE_RELOCATION['len']
+        block_offset += self._h['BASE_RELOCATION']['len']
         while block_offset < (block_base + reloc_block['SizeOfBlock']):
           reloc = {}
           # unpack specific relocation
