@@ -543,7 +543,7 @@ class PE(object):
         dst[src['fmt'][i][0]] = raw[i]
       # get header name we were trying to unpack
       h = [x for x in self._h if self._h[x] is src][0]
-      print('[-] !!WARNING!! Failed to unpack struct {0} at file offset {1}. Possible malformed PE file or malicious tampering.'.format(h, hex(offset)))
+      print('[-] !!WARNING!! Failed to unpack struct {0} at file offset {1}. Possible malformed PE file or malicious tampering to prevent analysis.'.format(h, hex(offset)))
     finally:
       return dst
 

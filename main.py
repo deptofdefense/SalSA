@@ -17,35 +17,51 @@ import rules
 for r in rules.__all__:
   __import__('rules.' + r)
 
-# alerts = []
 # obj = pe.PE('tests/55_m')
+# print obj
 
-# open all files in tests/
-for f in os.listdir('tests'):
-  # display file header
-  print '#' * 80
-  print 'File: ' + f
-  print '#' * 80
-  try:
-    # parse the file specified at the comand line
-    obj = pe.PE('tests/' + f)
-  except Exception as e:
-    print 'ERROR'
-    traceback.print_exc()
-    continue
-  # list holding alerts accross all rules
+try:
   alerts = []
-
+  # parse the file specified at the comand line
+  obj = pe.PE(sys.argv[1])
   for r in rules.__all__:
     alerts.extend(sys.modules['rules.' + r].run(obj))
-  # import pprint
-  # print pprint.pprint(obj.parse_strings(0, -1, min_length=10), indent=2)
-
-  # alerts.extend(sys.modules['rules.check_section_strings'].run(obj))
-
   # display any alerts
   if alerts:
     for a in alerts:
       print(a)
       # display delimiter
       print('-' * 80)
+except Exception as e:
+  print 'ERROR'
+  traceback.print_exc()
+
+# # open all files in tests/
+# for f in os.listdir('tests'):
+#   # display file header
+#   print '#' * 80
+#   print 'File: ' + f
+#   print '#' * 80
+#   try:
+#     # parse the file specified at the comand line
+#     obj = pe.PE('tests/' + f)
+#   except Exception as e:
+#     print 'ERROR'
+#     traceback.print_exc()
+#     continue
+#   # list holding alerts accross all rules
+#   alerts = []
+
+#   for r in rules.__all__:
+#     alerts.extend(sys.modules['rules.' + r].run(obj))
+#   # import pprint
+#   # print pprint.pprint(obj.parse_strings(0, -1, min_length=10), indent=2)
+
+#   # alerts.extend(sys.modules['rules.check_section_strings'].run(obj))
+
+#   # display any alerts
+#   if alerts:
+#     for a in alerts:
+#       print(a)
+#       # display delimiter
+#       print('-' * 80)
