@@ -24,6 +24,7 @@ try:
   alerts = []
   # parse the file specified at the comand line
   obj = pe.PE(sys.argv[1])
+  print(obj)
   for r in rules.__all__:
     alerts.extend(sys.modules['rules.' + r].run(obj))
   # display any alerts
@@ -33,7 +34,6 @@ try:
       # display delimiter
       print('-' * 80)
 except Exception as e:
-  print 'ERROR'
   traceback.print_exc()
 
 # # open all files in tests/
