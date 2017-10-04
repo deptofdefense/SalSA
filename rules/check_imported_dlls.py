@@ -36,7 +36,7 @@ targets = {
   'GetClipboardData': 'This function is used to read user clipboard data and is sometimes used in keyloggers.',
   'GetDC': 'This function returns a handle to a device context for a window or the whole screen. Spyware that takes screen captures often uses this function.',
   'GetForegroundWindow': 'This function returns a handle to the window currently in the foreground of the desktop. Keyloggers commonly use this function to determine in which window the user is entering his keystrokes.',
-  'gethostbyname': 'This function is used to perform a DNS lookup on a particular hostname prior to making an IP connection to a remote host. Hostnames that serve as command and- control servers often make good network-based signatures.',
+  'gethostbyname': 'This function is used to perform a DNS lookup on a particular hostname prior to making an IP connection to a remote host. Hostnames that serve as command-and-control servers often make good network-based signatures.',
   'gethostname': 'This function is used to retrieve the hostname of the computer. Backdoors sometimes use gethostname in information gathering phase of the victim machine.',
   'GetKeyState': 'This function is used by keyloggers to obtain the status of a particular key on the keyboard.',
   'GetModuleFilename': 'This function returns the filename of a module that is loaded in the current process. Malware can use this function to modify or copy files in the currently running process.',

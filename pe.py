@@ -344,33 +344,45 @@ class PE(object):
     },
   }
 
-  def __init__(self, filename):
+  def __init__(self, filename, verbose):
     """ extract PE file piece by piece """
     offset = 0
     self._d = {}
+    self._err = False
+    self._v = verbose
     self._b64 = False
     self._file = open(filename, 'rb')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse DOS header
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     try:
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # parse DOS header
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       self._d['DOS_HEADER'] = self._unpack(self._h['DOS_HEADER'], offset)
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # extract DOS stub
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    except:
+      self._error('Failed to parse DOS header.')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # extract DOS stub
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    try:
       stub_len = self._d['DOS_HEADER']['e_lfanew'] - self._h['DOS_HEADER']['len']
       stub_program = self.read(self._h['DOS_HEADER']['len'], stub_len)
       self._d['DOS_STUB'] = struct.unpack('{0}s'.format(stub_len), stub_program)[0]
       offset += self._d['DOS_HEADER']['e_lfanew']
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # parse PE header
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    except:
+      self._error('Failed to extract DOS program.')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse PE header
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    try:
       self._d['PE_HEADER'] = self._unpack(self._h['PE_HEADER'], offset)
       offset += self._h['PE_HEADER']['len']
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # parse optional image header
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    except:
+      self._error('Failed to parse PE header.')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse optional image header
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    try:
       if self._d['PE_HEADER']['SizeOfOptionalHeader'] > 0:
+        optional_header_base = offset
         if struct.unpack('<H', self.read(offset, 2))[0] == 0x20b:
           # parse 64 bit binary
           self._b64 = True
@@ -380,74 +392,88 @@ class PE(object):
           # parse 32 bit binary (0x10b)
           self._d['IMAGE_HEADER'] = self._unpack(self._h['IMAGE_HEADER_32'], offset)
           offset += self._h['IMAGE_HEADER_32']['len']
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # parse data directory (number of directories varies by compiler)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        num_dirs = self._d['IMAGE_HEADER']['NumberOfRvaAndSizes']
-        dirs_fmt = {
-           # only parse data directories we have specified/understand
-          'len': min(num_dirs * 8, self._h['DATA_DIRECTORY']['len']),
-          'fmt': self._h['DATA_DIRECTORY']['fmt'][:min((num_dirs * 2), len(self._h['DATA_DIRECTORY']['fmt']))]
-        }
-        self._d['DATA_DIRECTORY'] = self._unpack(dirs_fmt, offset)
-        offset += dirs_fmt['len']
-      else:
-        self._d['IMAGE_HEADER'] = {}
-        self._d['DATA_DIRECTORY'] = {}
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # parse section headers
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    except:
+      self._error('Failed to parse optional image header.')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse data directory (number of directories varies by compiler)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    try:
+      num_dirs = self._d['IMAGE_HEADER']['NumberOfRvaAndSizes']
+      dirs_fmt = {
+         # only parse data directories we have specified/understand
+        'len': min(num_dirs * 8, self._h['DATA_DIRECTORY']['len']),
+        'fmt': self._h['DATA_DIRECTORY']['fmt'][:min((num_dirs * 2), len(self._h['DATA_DIRECTORY']['fmt']))]
+      }
+      self._d['DATA_DIRECTORY'] = self._unpack(dirs_fmt, offset)
+      offset = optional_header_base + self._d['PE_HEADER']['SizeOfOptionalHeader']
+    except:
+      self._error('Failed to parse data directories.')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # parse section headers
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    try:
       self._d['SECTIONS'] = []
       for i in range(self._d['PE_HEADER']['NumberOfSections']):
         section = self._unpack(self._h['SECTION_HEADER'], offset)
+        offset += self._h['SECTION_HEADER']['len']
         # fix section name to remove null byte padding
         section['Name'] = section['Name'].replace('\x00', '')
-        offset += self._h['SECTION_HEADER']['len']
         self._d['SECTIONS'].append(section)
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      # extract data directory entries (some not publicly documented...)
-      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-      if self._d['DATA_DIRECTORY']:
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # debug directory (.debug)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['Debug_size'] > 0:
+    except:
+      self._error('Failed to parse section headers.')
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    # extract data directory entries (some not publicly documented...)
+    # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+    if 'DATA_DIRECTORY' in self._d:
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # debug directory (.debug)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['Debug']:
           self._d['DEBUG_DIRECTORY'] = self._unpack(self._h['DEBUG_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Debug']))
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # export directory (.edata)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['Export_size'] > 0:
+      except:
+        self._error('Failed to parse debug data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Debug'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # export directory (.edata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['Export']:
           self._d['EXPORT_DIRECTORY'] = self._unpack(self._h['EXPORT_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Export']))
-          # get actual export file name from RVA
           self._d['EXPORT_DIRECTORY']['Name'] = self.rva2str(self._d['EXPORT_DIRECTORY']['Name'])
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # import directory (.idata)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['Import_size'] > 0:
+      except:
+        self._error('Failed to parse export data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Export'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # import directory (.idata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['Import']:
           self._d['IMPORT_DIRECTORY'] = []
           import_desc_offset = self.rva2offset(self._d['DATA_DIRECTORY']['Import'])
           # unpack each import descriptor entry
           while True:
             import_desc = self._unpack(self._h['IMPORT_DESCRIPTOR'], import_desc_offset)
             # check for empty entry
-            if import_desc['OriginalFirstThunk'] == 0:
+            if self._isZero(import_desc):
               break
             # resolve the name of the import descriptor
             import_desc['Name'] = self.rva2str(import_desc['Name'])
             self._d['IMPORT_DIRECTORY'].append(import_desc)
             # go to the next descriptor
             import_desc_offset += self._h['IMPORT_DESCRIPTOR']['len']
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # bound import directory (.idata)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['BoundImport_size'] > 0:
+      except:
+        self._error('Failed to parse import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Import'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # bound import directory (.idata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['BoundImport']:
           self._d['BOUND_IMPORTS_DIRECTORY'] = []
           bound_import_offset = self.rva2offset(self._d['DATA_DIRECTORY']['BoundImport'])
           # unpack array of BOUND_IMPORT_DESCRIPTORs
           while True:
             bound_import_desc = self._unpack(self._h['BOUND_IMPORT_DESCRIPTOR'], bound_import_offset)
             # check for null terminator
-            if bound_import_desc['TimeDateStamp'] == 0:
+            if self._isZero(bound_import_desc):
               break
             # goto next descriptor
             bound_import_offset += self._h['BOUND_IMPORT_DESCRIPTOR']['len']
@@ -455,10 +481,13 @@ class PE(object):
             bound_import_desc['OffsetModuleName'] = self.rva2str(self._d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['OffsetModuleName'])
             # add to class dictionary
             self._d['BOUND_IMPORTS_DIRECTORY'].append(bound_import_desc)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # relocation directory (.reloc)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['BaseRelocationTable_size'] > 0:
+      except:
+        self._error('Failed to parse bound import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['BoundImport'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # relocation directory (.reloc)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['BaseRelocationTable']:
           self._d['RELOCATION_DIRECTORY'] = []
           base_offset = self.rva2offset(self._d['DATA_DIRECTORY']['BaseRelocationTable'])
           block_offset = base_offset
@@ -469,10 +498,13 @@ class PE(object):
             block_offset += reloc_entry['SizeOfBlock']
             # add to class dictionary
             self._d['RELOCATION_DIRECTORY'].append(reloc_entry)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # exception directory (.pdata)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['Exception_size'] > 0:
+      except:
+        self._error('Failed to parse relocation data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['BaseRelocationTable'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # exception directory (.pdata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['Exception']:
           # parse as many as the size dictates
           self._d['EXCEPTION_DIRECTORY'] = []
           entry_offset = self.rva2offset(self._d['DATA_DIRECTORY']['Exception'])
@@ -484,48 +516,61 @@ class PE(object):
             entry_offset += self._h['EXCEPTION_FUNCTION_ENTRY']['len']
             # add to class dictionary
             self._d['EXCEPTION_DIRECTORY'].append(exception_entry)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # TLS directory (.tls)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0:
+      except:
+        self._error('Failed to parse exception data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Exception'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # TLS directory (.tls)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['ThreadLocalStorage']:
           if self._b64:
             self._d['TLS_DIRECTORY'] = self._unpack(self._h['TLS_DIRECTORY_64'], self.rva2offset(self._d['DATA_DIRECTORY']['ThreadLocalStorage']))
           else:
             self._d['TLS_DIRECTORY'] = self._unpack(self._h['TLS_DIRECTORY_32'], self.rva2offset(self._d['DATA_DIRECTORY']['ThreadLocalStorage']))
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # delay imports directory (.idata)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['DelayImportTable_size'] > 0:
+      except:
+        self._error('Failed to parse thread local storage data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['ThreadLocalStorage'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # delay imports directory (.idata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['DelayImportTable']:
           self._d['DELAY_IMPORT_DIRECTORY'] = []
           import_desc_offset = self.rva2offset(self._d['DATA_DIRECTORY']['DelayImportTable'])
           # unpack each delay import descriptor entry
           while True:
             import_desc = self._unpack(self._h['DELAY_IMPORT_DESCRIPTOR'], import_desc_offset)
             # check for empty entry
-            if import_desc['Name'] == 0:
+            if self._isZero(import_desc):
               break
-            # resolve the name of the import descriptor
+            # resolve the name of the import descriptor and check for RVA bug:
+            # https://reverseengineering.stackexchange.com/questions/16261/should-the-delay-import-directory-contain-virtual-addresses
+            if not (import_desc['Attributes'] & 0x1):
+              import_desc['Name'] = self.va2rva(import_desc['Name'])
             import_desc['Name'] = self.rva2str(import_desc['Name'])
             self._d['DELAY_IMPORT_DIRECTORY'].append(import_desc)
             # go to the next descriptor
             import_desc_offset += self._h['DELAY_IMPORT_DESCRIPTOR']['len']
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # configuration directory (.rdata)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['LoadConfiguration_size'] > 0:
+      except:
+        self._error('Failed to parse delay imports data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['DelayImportTable'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # configuration directory (.rdata)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['LoadConfiguration']:
           if self._b64:
             self._d['LOAD_CONFIG_DIRECTORY'] = self._unpack(self._h['LOAD_CONFIG_DIRECTORY_64'], self.rva2offset(self._d['DATA_DIRECTORY']['LoadConfiguration']))
           else:
             self._d['LOAD_CONFIG_DIRECTORY'] = self._unpack(self._h['LOAD_CONFIG_DIRECTORY_32'], self.rva2offset(self._d['DATA_DIRECTORY']['LoadConfiguration']))
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        # configuration directory (.rsrc)
-        # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-        if self._d['DATA_DIRECTORY']['Resource_size'] > 0:
+      except:
+        self._error('Failed to parse load configuration data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['LoadConfiguration'])))
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      # resource directory (.rsrc)
+      # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+      try:
+        if self._d['DATA_DIRECTORY']['Resource']:
           self._d['RESOURCE_DIRECTORY'] =  self._unpack(self._h['RESOURCE_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Resource']))
-    except:
-      print('[-] !!WARNING!! Failed to parse standard PE headers for file {0}. Possible malformed PE file or malicious tampering to prevent analysis.'.format(filename))
-      # this requires a program exit...
-      quit()
+      except:
+        self._error('Failed to parse resource data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Resource'])))
 
   def __str__(self):
     """ format internals as hex strings """
@@ -533,24 +578,23 @@ class PE(object):
     self._fmt2hex(output)
     return pprint.pformat(output)
 
+  def _error(self, desc, prefix='-'):
+    """ display the error and verbose description formatted """
+    if not self._err:
+      self._err = True
+      # only print this once
+      print('[-] WARNING: Possible malformed PE file or malicious tampering to prevent analysis.')
+    if self._v:
+      print('[-]  ' + prefix + ' ' + desc)
+
   def _unpack(self, src, offset):
     """ internal function to unpack a given struct/header into an array of bytes """
     dst = {}
     self._file.seek(offset)
-    try:
-      raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self.read(offset, src['len']))
-      for i in range(len(raw)):
-        dst[src['fmt'][i][0]] = raw[i]
-    except:
-      # set dst to null values
-      raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), b'\x00' * src['len'])
-      for i in range(len(raw)):
-        dst[src['fmt'][i][0]] = raw[i]
-      # get header name we were trying to unpack
-      h = [x for x in self._h if self._h[x] is src][0]
-      print('[-] !!WARNING!! Failed to unpack struct {0} at file offset {1}. Possible malformed PE file or malicious tampering to prevent analysis.'.format(h, hex(offset)))
-    finally:
-      return dst
+    raw = struct.unpack('<' + ''.join([f[1] for f in src['fmt']]), self.read(offset, src['len']))
+    for i in range(len(raw)):
+      dst[src['fmt'][i][0]] = raw[i]
+    return dst
 
   def _fmt2hex(self, d):
     """ format dictionary 'd' into a readable hex format """
@@ -568,79 +612,14 @@ class PE(object):
       # return raw ascii strings with . for unknwown bytes
       return ''.join([x if ((31 < ord(x)) and (ord(x) < 127)) else '.' for x in d])
 
-  def _parseINT(self, rva):
-    """ internal helper to parse the Import Name Table (INT) for
-        delay import tables and normal (static) import tables """
-    desc_imports = []
-    # parse all imports within the current descriptor
-    import_entry_ptr = self.rva2offset(rva)
-    while True:
-      import_entry = {'ordinal':'','name':'','hint':''}
-      # get the entry data pointer (32 or 64 bit pointer) and check for ordinal
-      if self._b64:
-        entry_rva = struct.unpack('<Q', self.read(import_entry_ptr, 8))[0]
-        if entry_rva & (0x1 << 63):
-          import_entry['ordinal'] = entry_rva & ~(0x1 << 63)
-      else:
-        entry_rva = struct.unpack('<I', self.read(import_entry_ptr, 4))[0]
-        if entry_rva & (0x1 << 31):
-          import_entry['ordinal'] = entry_rva & ~(0x1 << 31)
-      # check for null entry
-      if entry_rva == 0:
-        break
-      # if not an ordinal, then get entry data at pointer
-      if not import_entry['ordinal']:
-        # name pointer after hint which is 2 byes
-        import_entry['hint'] = struct.unpack('<H', self.read(self.rva2offset(entry_rva), 2))[0]
-        import_entry['name'] = self.rva2str(entry_rva + 2)
-      # go to next pointer
-      import_entry_ptr += 8 if (self._b64) else 4
-      desc_imports.append(import_entry)
-    return desc_imports
-
-  def _parseResourceRecursive(self, dir_rva, nodes, path):
-    """ take a base RVA to an _RESOURCE_DIRECTORY and extract
-        all RESOURCE_ENTRYs inside recursively into nodes """
-    # get info from RESOURCE_DIRECTORY
-    base = self.rva2offset(dir_rva)
-    num_names = struct.unpack('<H', self.read(base + 12, 2))[0]
-    num_ids = struct.unpack('<H', self.read(base + 14, 2))[0]
-    # parse each RESOURCE_DIRECTORY_ENTRY
-    entry_offset = base + self._h['RESOURCE_DIRECTORY']['len']
-    for i in range(num_names + num_ids):
-      # extract Name and OffsetToData for this RESOURCE_DIRECTORY_ENTRY
-      ename =  struct.unpack('<I', self.read(entry_offset, 4))[0]
-      eoffset = struct.unpack('<I', self.read(entry_offset + 4, 4))[0]
-      # parse name/id for entry
-      next_path = path
-      if ename & (0x1 << 31):
-        # name is a string RVA
-        ename_base = self.rva2offset(self._d['DATA_DIRECTORY']['Resource'] + (ename & ~(0x1 << 31)))
-        ename_len = struct.unpack('<H', self.read(ename_base, 2))[0]
-        # decode UTF-16LE string
-        ename_raw = struct.unpack('{0}s'.format(ename_len * 2), self.read(ename_base + 2, ename_len * 2))[0]
-        next_path += ename_raw.decode('UTF-16LE')
-      else:
-        # name is an ID
-        next_path += str(ename & 0xFFFF)
-      # check for another directory to parse
-      if eoffset & (0x1 << 31):
-        # directory offset. recurse downwards
-        self._parseResourceRecursive(self._d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)), nodes, next_path + '/')
-      else:
-        node = {}
-        # data offset. extract codepage, data, and language
-        data_base = self.rva2offset(self._d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)))
-        data_rva = struct.unpack('<I', self.read(data_base, 4))[0]
-        data_len = struct.unpack('<I', self.read(data_base + 4, 4))[0]
-        node['codepage'] = struct.unpack('<I', self.read(data_base + 8, 4))[0]
-        node['data'] = struct.unpack('{0}s'.format(data_len), self.read(self.rva2offset(data_rva), data_len))[0]
-        node['lang'] = ename & 0xFFFF
-        node['path'] = path
-        # append data to the current level in recursion
-        nodes.append(node)
-      # goto the next directory entry
-      entry_offset += 8
+  def _isZero(self, d):
+    """ checks a dictionary to see if it is all zeros """
+    for k in d:
+      if isinstance(d[k], int) and (d[k] != 0):
+        return False
+      if isinstance(d[k], str) and ('\x00' not in d[k]):
+        return False
+    return True
 
   def read(self, addr, num_bytes):
     """ read bytes from file at a certain offset """
@@ -667,8 +646,8 @@ class PE(object):
     for section in self._d['SECTIONS']:
       if (section['VirtualAddress'] <= rva) and (rva < (section['VirtualAddress'] + section['VirtualSize'])):
         return section['PointerToRawData'] + (rva - section['VirtualAddress'])
-    print('[-] !!WARNING!! Relative Virtual Address: ' + hex(rva) + ' does not fall inside specified sections. Possible malformed PE file or malicious tampering.')
-    return 0
+    # this means the RVA is invalid
+    raise Exception
 
   def va2rva(self, va):
     """ take a virtual address and scale it back by the
@@ -679,16 +658,14 @@ class PE(object):
     """ try and follow the export directory and return PE exports """
     exports = []
     try:
-      if self._d['DATA_DIRECTORY'] and (self._d['DATA_DIRECTORY']['Export_size'] > 0):
+      if 'EXPORT_DIRECTORY' in self._d:
         # get offset to function array
         export_fun_offset = self.rva2offset(self._d['EXPORT_DIRECTORY']['AddressOfFunctions'])
         # unpack each 32 bit address
         for i in range(self._d['EXPORT_DIRECTORY']['NumberOfFunctions']):
           fun_rva = struct.unpack('<I', self.read(export_fun_offset + (i * 4), 4))[0]
           # check for forwarded export
-          if fun_rva and ((self._d['DATA_DIRECTORY']['Export'] <= fun_rva) and
-                          (fun_rva < (self._d['DATA_DIRECTORY']['Export'] +
-                                      self._d['DATA_DIRECTORY']['Export_size']))):
+          if fun_rva and (self._d['DATA_DIRECTORY']['Export'] <= fun_rva) and (fun_rva < (self._d['DATA_DIRECTORY']['Export'] + self._d['DATA_DIRECTORY']['Export_size'])):
             exports.append({
               'offset': self.rva2str(fun_rva),
               'name': '',
@@ -714,7 +691,9 @@ class PE(object):
               e['name'] = name
               break
     except:
-      print('[-] !!WARNING!! Failed to parse exports. Possible malformed PE file or malicious tampering to prevent analysis.')
+      self._error('Failed to extract export data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Export'])))
+      for l in pprint.pformat(self._fmt2hex(self._d['EXPORT_DIRECTORY']), indent=2).split('\n'):
+        self._error(l, prefix='')
     finally:
       return exports
 
@@ -722,25 +701,85 @@ class PE(object):
     """ try and follow the delay-load and static import directories
         and return PE imports """
     imports = []
+    def _parseIAT(rva, attr=0x1):
+      """ internal helper to parse the Import Address Table (IAT) for
+          delay import tables and normal (static) import tables. The attr
+          argument only applies to bound import tables (see bug below) """
+      # parse all imports within the current descriptor and check for
+      # Microsoft C++ 6.0 bug to convert virtual address to RVA:
+      # https://reverseengineering.stackexchange.com/questions/16261/should-the-delay-import-directory-contain-virtual-addresses
+      desc_imports = []
+      import_entry_ptr = self.rva2offset(rva) if (attr & 0x1) else self.rva2offset(self.va2rva(rva))
+      while True:
+        import_entry = {'ordinal':'','name':'','hint':''}
+        # get the entry data pointer (32 or 64 bit pointer) and check for ordinal
+        if self._b64:
+          entry_rva = struct.unpack('<Q', self.read(import_entry_ptr, 8))[0]
+          if entry_rva & (0x1 << 63):
+            import_entry['ordinal'] = entry_rva & ~(0x1 << 63)
+        else:
+          entry_rva = struct.unpack('<I', self.read(import_entry_ptr, 4))[0]
+          if entry_rva & (0x1 << 31):
+            import_entry['ordinal'] = entry_rva & ~(0x1 << 31)
+        # check for null entry
+        if entry_rva == 0:
+          break
+        # if not an ordinal, then get entry data at pointer
+        if not import_entry['ordinal']:
+          # if not (attr & 0x1):
+          #   print 'b delay: ', hex(entry_rva)
+          # name pointer after hint which is 2 bytes
+          entry_rva = entry_rva if (attr & 0x1) else self.va2rva(entry_rva)
+          import_entry['hint'] = struct.unpack('<H', self.read(self.rva2offset(entry_rva), 2))[0]
+          # if not (attr & 0x1):
+          #   print 'a delay: ', hex(entry_rva), '\n'
+          import_entry['name'] = self.rva2str(entry_rva + 2)
+        # go to next pointer (8 for x86-64 and 4 for x86)
+        import_entry_ptr += 8 if (self._b64) else 4
+        desc_imports.append(import_entry)
+      return desc_imports
     try:
-      if self._d['DATA_DIRECTORY'] and (self._d['DATA_DIRECTORY']['Import_size'] > 0):
+      if 'IMPORT_DIRECTORY' in self._d:
         # go through each import descriptor and get list of imports
         for import_desc in self._d['IMPORT_DIRECTORY']:
-          desc_imports = self._parseINT(import_desc['OriginalFirstThunk'])
-          imports.append({
-            'dll': import_desc['Name'],
-            'functions': desc_imports,
-          })
-      if self._d['DATA_DIRECTORY'] and (self._d['DATA_DIRECTORY']['DelayImportTable_size'] > 0):
-        # go through each import descriptor and get list of imports
-        for import_desc in self._d['DELAY_IMPORT_DIRECTORY']:
-          desc_imports = self._parseINT(import_desc['ImportNameTable'])
-          imports.append({
-            'dll': import_desc['Name'],
-            'functions': desc_imports,
-          })
+          # try FT array first because malware will put bogus data in OFT
+          functions = []
+          try:
+            functions = _parseIAT(import_desc['FirstThunk'])
+          except:
+            functions = _parseIAT(import_desc['OriginalFirstThunk'])
+          finally:
+            if functions:
+              imports.append({
+                'dll': import_desc['Name'],
+                'functions': functions,
+              })
     except:
-      print('[-] !!WARNING!! Failed to parse imports. Possible malformed PE file or malicious tampering to prevent analysis.')
+      self._error('Failed to extract import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Import'])))
+      for d in self._d['IMPORT_DIRECTORY']:
+        for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
+          self._error(l, prefix='')
+    try:
+      if 'DELAY_IMPORT_DIRECTORY' in self._d:
+        # go through each delay import descriptor and get list of imports
+        for import_desc in self._d['DELAY_IMPORT_DIRECTORY']:
+          # try IAT array first because malware will put bogus data in INT
+          functions = []
+          try:
+            functions = _parseIAT(import_desc['ImportAddressTable'], attr=import_desc['Attributes'])
+          except:
+            functions = _parseIAT(import_desc['ImportNameTable'], attr=import_desc['Attributes'])
+          finally:
+            if functions:
+              imports.append({
+                'dll': import_desc['Name'],
+                'functions': functions,
+              })
+    except:
+      self._error('Failed to extract delay import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['DelayImportTable'])))
+      for d in self._d['DELAY_IMPORT_DIRECTORY']:
+        for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
+          self._error(l, prefix='')
     finally:
       return imports
 
@@ -748,7 +787,7 @@ class PE(object):
     """ try and follow the relocations directory and return PE relocations """
     relocs = []
     try:
-      if self._d['DATA_DIRECTORY'] and (self._d['DATA_DIRECTORY']['BaseRelocationTable_size'] > 0):
+      if 'RELOCATION_DIRECTORY' in self._d:
         # go through each relocation block
         block_offset = self.rva2offset(self._d['DATA_DIRECTORY']['BaseRelocationTable'])
         for reloc_block in self._d['RELOCATION_DIRECTORY']:
@@ -768,20 +807,21 @@ class PE(object):
           # get section RVA for this relocation block
           section_name = None
           for section in self._d['SECTIONS']:
-            if ((section['VirtualAddress'] <= reloc_block['VirtualAddress']) and
-                (reloc_block['VirtualAddress'] < (section['VirtualAddress'] + section['VirtualSize']))):
+            if (section['VirtualAddress'] <= reloc_block['VirtualAddress']) and (reloc_block['VirtualAddress'] < (section['VirtualAddress'] + section['VirtualSize'])):
               section_name = section['Name']
               break
           if not section_name:
-            print('[-] WARNING: Relocation Relative Virtual Address: ' + hex(reloc_block['VirtualAddress']) +
-                  ' does not fall inside any specified section')
+            print('[-] WARNING! Relocation Relative Virtual Address: {0} does not fall inside any specified section'.format(hex(reloc_block['VirtualAddress'])))
             section_name = ''
           relocs.append({
             'relocations': reloc_entries,
             'section': section_name,
           })
     except:
-      print('[-] !!WARNING!! Failed to parse relocations. Possible malformed PE file or malicious tampering to prevent analysis.')
+      self._error('Failed to extract relocation data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['BaseRelocationTable'])))
+      for d in self._d['RELOCATION_DIRECTORY']:
+        for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
+          self._error(l, prefix='')
     finally:
       return relocs
 
@@ -791,7 +831,7 @@ class PE(object):
     data = ''
     callbacks = []
     try:
-      if self._d['DATA_DIRECTORY'] and (self._d['DATA_DIRECTORY']['ThreadLocalStorage_size'] > 0):
+      if 'TLS_DIRECTORY' in self._d:
         # extract binary data for TLS storage
         data_len = abs(self._d['TLS_DIRECTORY']['EndAddressOfRawData'] - self._d['TLS_DIRECTORY']['StartAddressOfRawData'])
         if data_len:
@@ -811,19 +851,66 @@ class PE(object):
             break
           callbacks.append(self.rva2offset(self.va2rva((callback))))
     except:
-      print('[-] !!WARNING!! Failed to parse thread local storage. Possible malformed PE file or malicious tampering to prevent analysis.')
+      self._error('Failed to extract thread local storage data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['ThreadLocalStorage'])))
+      for l in pprint.pformat(self._fmt2hex(self._d['TLS_DIRECTORY']), indent=2).split('\n'):
+        self._error(l, prefix='')
     finally:
       return {'data': data, 'callback_offsets': callbacks}
 
   def parse_resources(self):
-    """ parse resources filesystem and return all information serialized """
+    """ parse resources file system and return all information serialized """
     rdir = []
+    def _recurseOnDirectoryEntry(resource_data_entry_rva, nodes, path):
+      """ take a base RVA to an RESOURCE_DIRECTORY and extract
+          all RESOURCE_ENTRYs inside recursively into nodes """
+      # get info from RESOURCE_DIRECTORY
+      base = self.rva2offset(resource_data_entry_rva)
+      num_names = struct.unpack('<H', self.read(base + 12, 2))[0]
+      num_ids = struct.unpack('<H', self.read(base + 14, 2))[0]
+      # parse each RESOURCE_DIRECTORY_ENTRY
+      entry_offset = base + self._h['RESOURCE_DIRECTORY']['len']
+      for i in range(num_names + num_ids):
+        # extract Name and OffsetToData for this RESOURCE_DIRECTORY_ENTRY
+        ename =  struct.unpack('<I', self.read(entry_offset, 4))[0]
+        eoffset = struct.unpack('<I', self.read(entry_offset + 4, 4))[0]
+        # parse name/id for entry
+        next_path = path
+        if ename & (0x1 << 31):
+          # name is a string RVA
+          ename_base = self.rva2offset(self._d['DATA_DIRECTORY']['Resource'] + (ename & ~(0x1 << 31)))
+          ename_len = struct.unpack('<H', self.read(ename_base, 2))[0]
+          # decode UTF-16LE string
+          ename_raw = struct.unpack('{0}s'.format(ename_len * 2), self.read(ename_base + 2, ename_len * 2))[0]
+          next_path += ename_raw.decode('UTF-16LE')
+        else:
+          # name is an ID
+          next_path += str(ename & 0xFFFF)
+        # check for another directory to parse
+        if eoffset & (0x1 << 31):
+          # directory offset. recurse downwards
+          _recurseOnDirectoryEntry(self._d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)), nodes, next_path + '/')
+        else:
+          node = {}
+          # data offset. extract codepage, data, and language
+          data_base = self.rva2offset(self._d['DATA_DIRECTORY']['Resource'] + (eoffset & ~(0x1 << 31)))
+          data_rva = struct.unpack('<I', self.read(data_base, 4))[0]
+          data_len = struct.unpack('<I', self.read(data_base + 4, 4))[0]
+          node['codepage'] = struct.unpack('<I', self.read(data_base + 8, 4))[0]
+          node['data'] = struct.unpack('{0}s'.format(data_len), self.read(self.rva2offset(data_rva), data_len))[0]
+          node['lang'] = ename & 0xFFFF
+          node['path'] = path
+          # append data to the current level in recursion
+          nodes.append(node)
+        # goto the next directory entry
+        entry_offset += 8
     try:
-      if self._d['DATA_DIRECTORY'] and (self._d['DATA_DIRECTORY']['Resource_size'] > 0):
+      if 'RESOURCE_DIRECTORY' in self._d:
         # recurse down the resource directory
-        self._parseResourceRecursive(self._d['DATA_DIRECTORY']['Resource'], rdir, '/')
+        _recurseOnDirectoryEntry(self._d['DATA_DIRECTORY']['Resource'], rdir, '/')
     except:
-      print('[-] !!WARNING!! Failed to parse resources. Possible malformed PE file or malicious tampering to prevent analysis.')
+      self._error('Failed to extract resource data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Resource'])))
+      for l in pprint.pformat(self._fmt2hex(self._d['RESOURCE_DIRECTORY']), indent=2).split('\n'):
+        self._error(l, prefix='')
     finally:
       return rdir
 
