@@ -18,60 +18,53 @@ import rules
 for r in rules.__all__:
   __import__('rules.' + r)
 
-# try:
-#   alerts = []
-#   # parse the file specified at the comand line
-#   obj = pe.PE(sys.argv[1], True)
-#   # print(obj)
-#   obj.parse_imports()
-#   obj.parse_exports()
-#   obj.parse_relocations()
-#   obj.parse_tls()
-#   obj.parse_resources()
+try:
+  alerts = []
+  # parse the file specified at the comand line
+  obj = pe.PE(sys.argv[1], True)
+  # print(obj)
+  # pprint.pprint(obj.parse_imports(), indent=2)
+  # obj.parse_exports()
+  # obj.parse_relocations()
+  # obj.parse_tls()
+  # obj.parse_resources()
 
-#   # import pprint
-#   # pprint.pprint(obj.parse_imports(), indent=2)
-#   # pprint.pprint(obj.parse_exports(), indent=2)
-#   # pprint.pprint(obj.parse_relocations(), indent=2)
-#   # pprint.pprint(obj.parse_tls(), indent=2)
-#   # pprint.pprint(obj.parse_resources(), indent=2)
+  for r in rules.__all__:
+    alerts.extend(sys.modules['rules.' + r].run(obj))
+  # display any alerts
+  if alerts:
+    for a in alerts:
+      print(a)
+      # display delimiter
+      print('-' * 80)
+except Exception as e:
+  traceback.print_exc()
 
-# #   for r in rules.__all__:
-# #     alerts.extend(sys.modules['rules.' + r].run(obj))
-# #   # display any alerts
-# #   if alerts:
-# #     for a in alerts:
-# #       print(a)
-# #       # display delimiter
-# #       print('-' * 80)
-# except Exception as e:
-#   traceback.print_exc()
-
-# open all files in tests/
-for f in os.listdir('tests'):
-# for f in ['21_m', '17_m', '41_m', '45_m', '55_m', '61_m', '80_m', '82_m']:
-  # display file header
-  print '#' * 80
-  print 'File: ' + f
-  print '#' * 80
-  try:
-    # parse the file specified at the comand line
-    obj = pe.PE('tests/' + f, True)
-    pprint.pprint(obj.parse_imports(), indent=2)
-    obj.parse_exports()
-    obj.parse_relocations()
-    obj.parse_tls()
-    obj.parse_resources()
-    # alerts = []
-    # for r in rules.__all__:
-    #   alerts.extend(sys.modules['rules.' + r].run(obj))
-  except Exception as e:
-    print 'ERROR'
-    traceback.print_exc()
-    continue
-  # # display any alerts
-  # if alerts:
-  #   for a in alerts:
-  #     print(a)
-  #     # display delimiter
-  #     print('-' * 80)
+# # open all files in tests/
+# # for f in os.listdir('tests'):
+# for f in ['21_m', '28_m', '30_m', '47_m', '59_m', '60_m', '62_m', '63_m', '78_m', '83_m', '91_m']:
+#   # display file header
+#   print '#' * 80
+#   print 'File: ' + f
+#   print '#' * 80
+#   try:
+#     # parse the file specified at the comand line
+#     obj = pe.PE('tests/' + f, True)
+#     pprint.pprint(obj.parse_imports(), indent=2)
+#     obj.parse_exports()
+#     obj.parse_relocations()
+#     obj.parse_tls()
+#     obj.parse_resources()
+#     # alerts = []
+#     # for r in rules.__all__:
+#     #   alerts.extend(sys.modules['rules.' + r].run(obj))
+#   except Exception as e:
+#     print 'ERROR'
+#     traceback.print_exc()
+#     continue
+#   # # display any alerts
+#   # if alerts:
+#   #   for a in alerts:
+#   #     print(a)
+#   #     # display delimiter
+#   #     print('-' * 80)

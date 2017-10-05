@@ -738,50 +738,47 @@ class PE(object):
         import_entry_ptr += 8 if (self._b64) else 4
         desc_imports.append(import_entry)
       return desc_imports
-    try:
-      if 'IMPORT_DIRECTORY' in self._d:
-        # go through each import descriptor and get list of imports
-        for import_desc in self._d['IMPORT_DIRECTORY']:
-          # try FT array first because malware will put bogus data in OFT
-          functions = []
-          try:
-            functions = _parseIAT(import_desc['FirstThunk'])
-          except:
-            functions = _parseIAT(import_desc['OriginalFirstThunk'])
-          finally:
-            if functions:
-              imports.append({
-                'dll': import_desc['Name'],
-                'functions': functions,
-              })
-    except:
-      self._error('Failed to extract import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Import'])))
-      for d in self._d['IMPORT_DIRECTORY']:
-        for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
-          self._error(l, prefix='')
-    try:
-      if 'DELAY_IMPORT_DIRECTORY' in self._d:
-        # go through each delay import descriptor and get list of imports
-        for import_desc in self._d['DELAY_IMPORT_DIRECTORY']:
-          # try IAT array first because malware will put bogus data in INT
-          functions = []
-          try:
-            functions = _parseIAT(import_desc['ImportAddressTable'], attr=import_desc['Attributes'])
-          except:
-            functions = _parseIAT(import_desc['ImportNameTable'], attr=import_desc['Attributes'])
-          finally:
-            if functions:
-              imports.append({
-                'dll': import_desc['Name'],
-                'functions': functions,
-              })
-    except:
-      self._error('Failed to extract delay import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['DelayImportTable'])))
-      for d in self._d['DELAY_IMPORT_DIRECTORY']:
-        for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
-          self._error(l, prefix='')
-    finally:
-      return imports
+    if 'IMPORT_DIRECTORY' in self._d:
+      # go through each import descriptor and get list of imports
+      for import_desc in self._d['IMPORT_DIRECTORY']:
+        # try FT array first because malware will put bogus data in OFT
+        functions = []
+        try:
+          functions = _parseIAT(import_desc['FirstThunk'])
+        except:
+          functions = _parseIAT(import_desc['OriginalFirstThunk'])
+        finally:
+          if functions:
+            imports.append({
+              'dll': import_desc['Name'],
+              'functions': functions,
+            })
+          else:
+            elf._error('Failed to extract import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Import'])))
+            for d in self._d['IMPORT_DIRECTORY']:
+              for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
+                self._error(l, prefix='')
+    if 'DELAY_IMPORT_DIRECTORY' in self._d:
+      # go through each delay import descriptor and get list of imports
+      for import_desc in self._d['DELAY_IMPORT_DIRECTORY']:
+        # this isn't documented anywhere but it looks like the INT is more reliable than IAT here
+        functions = []
+        try:
+          functions = _parseIAT(import_desc['ImportNameTable'], attr=import_desc['Attributes'])
+        except:
+          functions = _parseIAT(import_desc['ImportAddressTable'], attr=import_desc['Attributes'])
+        finally:
+          if functions:
+            imports.append({
+              'dll': import_desc['Name'],
+              'functions': functions,
+            })
+          else:
+            self._error('Failed to extract delay import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['DelayImportTable'])))
+            for d in self._d['DELAY_IMPORT_DIRECTORY']:
+              for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
+                self._error(l, prefix='')
+    return imports
 
   def parse_relocations(self):
     """ try and follow the relocations directory and return PE relocations """
