@@ -96,7 +96,7 @@ common = {
   '.code': 'Code Section',
   '.cormeta': '.CLR Metadata Section',
   '.complua': 'Binary data, most likely compiled LUA (also used by one of the downware installers based on LUA)',
-  '.CRT': 'Initialized Data Section  (C RunTime)',
+  '.CRT': 'Initialized Data Section (C RunTime)',
   '.cygwin_dll_common': 'cygwin section containing flags representing Cygwin capabilities',
   '.data': 'Data Section',
   '.DATA': 'Data Section',
@@ -121,14 +121,14 @@ common = {
   '.gljmp': 'section added by new Visual Studio (14.0); purpose unknown',
   '.glue_7t': 'ARMv7 core glue functions (thumb mode)',
   '.glue_7': 'ARMv7 core glue functions (32-bit ARM mode)',
-  '.idata': 'Initialized Data Section  (Borland)',
+  '.idata': 'Initialized Data Section (Borland Compiler)',
   '.idlsym': 'IDL Attributes (registered SEH)',
   '.impdata': 'Alternative Import data section',
-  '.itext': 'Code Section  (Borland)',
+  '.itext': 'Code Section (Borland Compiler)',
   '.ndata': 'Nullsoft Installer section',
   '.orpc': 'Code section inside rpcrt4.dll',
   '.pdata': 'Exception Handling Functions Section (PDATA records)',
-  '.rdata': 'Read-only initialized Data Section  (MS and Borland)',
+  '.rdata': 'Read-only initialized Data Section (Microsoft and Borland Compiler)',
   '.reloc': 'Relocations Section',
   '.rodata': 'Read-only Data Section',
   '.rsrc': 'Resource section',
@@ -152,12 +152,12 @@ common = {
   '.vsdata': 'GP-relative Initialized Data',
   '.xdata': 'Exception Information Section',
   '.wixburn': 'Wix section',
-  'BSS': 'Uninitialized Data Section  (Borland)',
-  'CODE': 'Code Section (Borland)',
-  'DATA': 'Data Section (Borland)',
+  'BSS': 'Uninitialized Data Section (Borland Compiler)',
+  'CODE': 'Code Section (Borland Compiler)',
+  'DATA': 'Data Section (Borland Compiler)',
   'DGROUP': 'Legacy data group section',
   'edata': 'Export Data Section',
-  'idata': 'Initialized Data Section  (C RunTime)',
+  'idata': 'Initialized Data Section (C RunTime)',
   'INIT': 'INIT section (drivers)',
   'minATL': 'Section that can be found inside some ARM PE files; purpose unknown',
   'PAGE': 'PAGE section (drivers)',
@@ -172,31 +172,47 @@ common = {
 
 SECTION_ALERT = """
 Application Section Names:
+{0}"""
 
-  Known good section names (can indicate functionality):
+KNOWN_COMMON = """
+  Known common section names (can indicate functionality):
 {0}
-
-  Known bad section names:
-{1}
-
-  Unknown section names (can indicate an unknown packer):
-{2}
 """
+
+KNOWN_BAD = """
+  Known bad section names:
+{0}
+"""
+
+UNKNOWN = """
+  Unknown section names (can indicate an unknown packer):
+{0}
+"""
+
 
 def run(peobject):
   alerts = []
   unknown = []
   known_bad = []
-  known_good = []
+  known_common = []
   # loop through each section
   for s in peobject.dict()['SECTIONS']:
     # check for known/unknown sections
     if (s['Name'] in packers):
       known_bad.append('\t\t' + s['Name'] + ' : ' + packers[s['Name']])
     elif (s['Name'] in common):
-      known_good.append('\t\t' + s['Name'] + ' : ' + common[s['Name']])
+      known_common.append('\t\t' + s['Name'] + ' : ' + common[s['Name']])
     else:
       unknown.append('\t\t' + s['Name'] + ' : ???')
-  # this rule always generates an alert
-  alerts.append(SECTION_ALERT.format('\n'.join(known_good), '\n'.join(known_bad), '\n'.join(unknown)))
+  # parse each section
+  alert = ''
+  if known_common:
+    alert += KNOWN_COMMON.format('\n'.join(known_common))
+  if known_bad:
+    alert += KNOWN_BAD.format('\n'.join(known_bad))
+  if unknown:
+    alert += UNKNOWN.format('\n'.join(unknown))
+  # generate final alert
+  if alert:
+    alerts.append(SECTION_ALERT.format(alert))
   return alerts

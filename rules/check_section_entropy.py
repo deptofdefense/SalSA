@@ -1,5 +1,5 @@
 """
-calculate the entropy of the file and check for randomness
+calculate the entropy of the file sections for randomness
 """
 import math
 
@@ -9,13 +9,16 @@ import math
 # entropy analysis
 THRESHOLD = 6.5
 
-ALERT_FMT = """
+ALERT_TITLE = """
 Possible Malware Obfuscation:
 
-Entropy for section {0} is {1}%. This indicates that this section
-may contain encrypted/packed data that will be decrypted or
-unpacked at runtime.
+  The following sections may contain encrypted/packed data that will be
+  decrypted or unpacked at runtime since they have entropy over {0:.2f}%:
+
+{1}
 """
+
+ALERT_FMT = '\t- Entropy for section {0} is {1:.2f}%'
 
 
 # performs shannon analysis:
@@ -35,6 +38,7 @@ def run(peobject):
   # array to hold list of final alerts
   alerts = []
   # loop through all sections and calculate entropy
+  alert_fmts = []
   d = peobject.dict()
   for s in d['SECTIONS']:
     # get bytes from section
@@ -42,7 +46,9 @@ def run(peobject):
     # calculate entropy and see if it exceeds the threshold
     e = byte_entropy(data)
     if e > THRESHOLD:
-      alerts.append(ALERT_FMT.format(s['Name'], str((e / 8.0) * 100)))
+      alert_fmts.append(ALERT_FMT.format(s['Name'], (e / 8.0) * 100))
   # return list of alerts for display
+  if alert_fmts:
+    alerts.append(ALERT_TITLE.format((THRESHOLD / 8.0) * 100, '\n'.join(alert_fmts)))
   return alerts
 

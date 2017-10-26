@@ -439,7 +439,7 @@ class PE(object):
       try:
         if self._d['DATA_DIRECTORY']['Export']:
           self._d['EXPORT_DIRECTORY'] = self._unpack(self._h['EXPORT_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Export']))
-          self._d['EXPORT_DIRECTORY']['Name'] = self.rva2str(self._d['EXPORT_DIRECTORY']['Name'])
+          self._d['EXPORT_DIRECTORY']['Name'] = self.offset2str(self.rva2offset(self._d['EXPORT_DIRECTORY']['Name']))
       except:
         self._error('Failed to parse export data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Export'])))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -456,7 +456,7 @@ class PE(object):
             if self._isZero(import_desc):
               break
             # resolve the name of the import descriptor
-            import_desc['Name'] = self.rva2str(import_desc['Name'])
+            import_desc['Name'] = self.offset2str(self.rva2offset(import_desc['Name']))
             self._d['IMPORT_DIRECTORY'].append(import_desc)
             # go to the next descriptor
             import_desc_offset += self._h['IMPORT_DESCRIPTOR']['len']
@@ -468,7 +468,7 @@ class PE(object):
       try:
         if self._d['DATA_DIRECTORY']['BoundImport']:
           self._d['BOUND_IMPORTS_DIRECTORY'] = []
-          bound_import_offset = self.rva2offset(self._d['DATA_DIRECTORY']['BoundImport'])
+          bound_import_offset = self._d['DATA_DIRECTORY']['BoundImport']
           # unpack array of BOUND_IMPORT_DESCRIPTORs
           while True:
             bound_import_desc = self._unpack(self._h['BOUND_IMPORT_DESCRIPTOR'], bound_import_offset)
@@ -478,7 +478,7 @@ class PE(object):
             # goto next descriptor
             bound_import_offset += self._h['BOUND_IMPORT_DESCRIPTOR']['len']
             # replace name field with actual string
-            bound_import_desc['OffsetModuleName'] = self.rva2str(self._d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['OffsetModuleName'])
+            bound_import_desc['OffsetModuleName'] =  self.offset2str(self._d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['OffsetModuleName'])
             # add to class dictionary
             self._d['BOUND_IMPORTS_DIRECTORY'].append(bound_import_desc)
       except:
@@ -546,7 +546,7 @@ class PE(object):
             # https://reverseengineering.stackexchange.com/questions/16261/should-the-delay-import-directory-contain-virtual-addresses
             if not (import_desc['Attributes'] & 0x1):
               import_desc['Name'] = self.va2rva(import_desc['Name'])
-            import_desc['Name'] = self.rva2str(import_desc['Name'])
+            import_desc['Name'] = self.offset2str(self.rva2offset(import_desc['Name']))
             self._d['DELAY_IMPORT_DIRECTORY'].append(import_desc)
             # go to the next descriptor
             import_desc_offset += self._h['DELAY_IMPORT_DESCRIPTOR']['len']
@@ -632,15 +632,6 @@ class PE(object):
         a python dictionary """
     return copy.deepcopy(self._d)
 
-  def rva2str(self, rva):
-    """ extract a null terminated string given an RVA """
-    offset = self.rva2offset(rva)
-    count = 0
-    self._file.seek(offset)
-    while ord(self._file.read(1)):
-      count += 1
-    return struct.unpack('{0}s'.format(count), self.read(offset, count))[0]
-
   def rva2offset(self, rva):
     """ get raw file offset from RVA """
     for section in self._d['SECTIONS']:
@@ -653,6 +644,14 @@ class PE(object):
     """ take a virtual address and scale it back by the
         imagebase in the image optional header """
     return va - self._d['IMAGE_HEADER']['ImageBase']
+
+  def offset2str(self, offset):
+    """ take a raw file offset and extract the string there """
+    count = 0
+    self._file.seek(offset)
+    while ord(self._file.read(1)):
+      count += 1
+    return struct.unpack('{0}s'.format(count), self.read(offset, count))[0]
 
   def parse_exports(self):
     """ try and follow the export directory and return PE exports """
@@ -667,8 +666,8 @@ class PE(object):
           # check for forwarded export
           if fun_rva and (self._d['DATA_DIRECTORY']['Export'] <= fun_rva) and (fun_rva < (self._d['DATA_DIRECTORY']['Export'] + self._d['DATA_DIRECTORY']['Export_size'])):
             exports.append({
-              'offset': self.rva2str(fun_rva),
-              'name': '',
+              'offset': 0,
+              'name': self.offset2str(self.rva2offset(fun_rva)),
               'ordinal': '',
             })
           # only include non-zero exports
@@ -684,7 +683,7 @@ class PE(object):
         for i in range(self._d['EXPORT_DIRECTORY']['NumberOfNames']):
           # get RVA from array and then convert to actual offsets to get data from
           ordinal = struct.unpack('<H', self.read(ordinal_array_offset + (i * 2), 2))[0]
-          name = self.rva2str(struct.unpack('<I', self.read(name_array_offset + (i * 4), 4))[0])
+          name = self.offset2str(self.rva2offset(struct.unpack('<I', self.read(name_array_offset + (i * 4), 4))[0]))
           # find the ordinal to place this name into
           for e in exports:
             if e['ordinal'] == (ordinal + self._d['EXPORT_DIRECTORY']['Base']):
@@ -733,7 +732,7 @@ class PE(object):
           import_entry['hint'] = struct.unpack('<H', self.read(self.rva2offset(entry_rva), 2))[0]
           # if not (attr & 0x1):
           #   print 'a delay: ', hex(entry_rva), '\n'
-          import_entry['name'] = self.rva2str(entry_rva + 2)
+          import_entry['name'] = self.offset2str(self.rva2offset(entry_rva + 2))
         # go to next pointer (8 for x86-64 and 4 for x86)
         import_entry_ptr += 8 if (self._b64) else 4
         desc_imports.append(import_entry)
@@ -893,7 +892,11 @@ class PE(object):
           data_rva = struct.unpack('<I', self.read(data_base, 4))[0]
           data_len = struct.unpack('<I', self.read(data_base + 4, 4))[0]
           node['codepage'] = struct.unpack('<I', self.read(data_base + 8, 4))[0]
-          node['data'] = struct.unpack('{0}s'.format(data_len), self.read(self.rva2offset(data_rva), data_len))[0]
+          # try to extract the data
+          try:
+            node['data'] = struct.unpack('{0}s'.format(data_len), self.read(self.rva2offset(data_rva), data_len))[0]
+          except:
+            node['data'] = ''
           node['lang'] = ename & 0xFFFF
           node['path'] = path
           # append data to the current level in recursion
@@ -916,7 +919,7 @@ class PE(object):
         if size is -1, then the whole file is searched. """
     result = {}
     _lang = {
-      'ascii':    r'[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!"#$%&\'()*+,-./:;<=>?@[\]^_`{|}~ ]',
+      'ascii':    r'[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"\\#$%&\'()*+,\-./:;<=>?@[\]^_`{|}~ ]',
       # languages are encoded in little endian for windows
       'latin':    r'(?:[\x20-\x7E][\x00])',               # 0020-007F (includes space)
       'cyrillic': r'(?:[\x00-\xFF][\x04]|\x20\x00)',      # 0400-04FF with space

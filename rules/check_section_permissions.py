@@ -14,29 +14,31 @@ IMAGE_SCN_MEM_WRITE              = 0x80000000
 WRITABLE_CODE_ALERT = """
 Self-Modifying Code:
 
-PE file section {0} has been marked as executable and writeable.
-Malware can use this to change functionality or self-inject code at
-runtime. Section begins at file offset {1} and is {2} bytes long.
+  The following sections are marked as executable and writeable.
+  Malware can use this to change functionality or self-inject code at
+  runtime:
 
-  Section Type:
-{3}
+{0}
 """
+ALERT_FMT = """  \t- Section {0} at file offset {1} ({2} bytes long):
+{3}"""
 
 # alert breakdowns for different section types
-SECTION_SHARED = """\t- Section marked as sharable between processes. This
-\t  is bad for DLLs because it allows for code injection into processes
-\t  who use the DLL."""
-SECTION_INITALIZED = """\t- Section marked as containing initialized data.
-\t  Executable may be modifying important configuration data at runtime."""
-SECTION_UNINITALIZED = """\t- Section marked as containing uninitalized data.
-\t  Executable may be setting important configuration data at runtime."""
-SECTION_CODE = """\t- Section marked as containing code. Executable may
-\t  be changing functionality at runtime."""
+SECTION_SHARED = """  \t\t- Section marked as sharable between processes. This is bad
+  \t\t  for DLLs because it allows for code injection into processes
+  \t\t  who use the DLL."""
+SECTION_INITALIZED = """  \t\t- Marked as containing initialized data. Executable may be
+  \t\t  modifying important configuration data at runtime."""
+SECTION_UNINITALIZED = """  \t\t- Marked as containing uninitalized data. Executable may be
+  \t\t  setting important configuration data at runtime."""
+SECTION_CODE = """  \t\t- Marked as containing code. Executable may be changing
+  \t\t  functionality at runtime."""
 
 def run(peobject):
   # array to hold list of final alerts
   alerts = []
   # loop through each section
+  alerts_fmt = []
   for s in peobject.dict()['SECTIONS']:
     # check for writeable code sections
     if ((s['Characteristics'] & IMAGE_SCN_MEM_WRITE) and
@@ -52,5 +54,7 @@ def run(peobject):
       if (s['Characteristics'] & IMAGE_SCN_MEM_SHARED):
         types.append(SECTION_SHARED)
       # generate alert
-      alerts.append(WRITABLE_CODE_ALERT.format(s['Name'], hex(s['PointerToRawData']), s['SizeOfRawData'], '\n'.join(types)))
+      alerts_fmt.append(ALERT_FMT.format(s['Name'], hex(s['PointerToRawData']), s['SizeOfRawData'], '\n'.join(types)))
+  if alerts_fmt:
+    alerts.append(WRITABLE_CODE_ALERT.format('\n\n'.join(alerts_fmt)))
   return alerts

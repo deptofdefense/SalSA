@@ -23,7 +23,7 @@ NOTE: These are not mapped into memory at runtime. Malware could place
 # regex patterns to look for
 patterns = {
   # local and remote filepaths
-  re.compile(r'(?:[a-zA-Z]\:|\w+)?\\+(?:[\w\- .\\$]+)*[\w\- .]*'),
+  re.compile(r'(?:[a-zA-Z]\:|[\w ]+)?\\+(?:[\w\- .\\$~]+)*[\w\- .]*'),
   # IP addresses
   re.compile(r'(?:(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)\.){3}(?:25[0-5]|2[0-4][0-9]|[01]?[0-9][0-9]?)'),
   # files
@@ -41,7 +41,7 @@ def match_patterns(strings):
   for string in strings:
     for p in patterns:
       for match in p.findall(string):
-        if match not in found:
+        if (len(match) > 2) and (match not in found):
           found.append(match)
   return found
 
