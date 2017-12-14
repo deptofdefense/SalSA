@@ -4,22 +4,6 @@ checks sections for common strings
 """
 import re
 
-# per section format
-SECTION_FMT = """
-Section {0} Possible Strings of Interest:
-
-{1}
-"""
-
-# non section format
-NON_SECTION_FMT = """
-Non-Section (File Offset Range {0} - {1}) Possible Strings of Interest:
-NOTE: These are not mapped into memory at runtime. Malware could place
-      disk persistence here to be referenced by some other executable.
-
-{2}
-"""
-
 # regex patterns to look for
 patterns = {
   # local and remote filepaths
@@ -64,7 +48,12 @@ def run(peobject):
     found = match_patterns(strings['ascii'] + strings['latin'])
     # add to overall alert if there is content
     if found:
-      alerts.append(SECTION_FMT.format(s['Name'], '\n'.join(found)))
+      alerts.append({
+        'title': 'Section {0} Possible Strings of Interest'.format(s['Name']),
+        'description': '',
+        'data': found,
+        'code': '',
+      })
   # find strings in non-section data
   for r in non_section_ranges:
     start, end = r[0], r[1]
@@ -74,5 +63,10 @@ def run(peobject):
     # add to overall alert if there is content
     if non_section_strings:
       range_end = 'EOF' if (end < start) else hex(end)
-      alerts.append(NON_SECTION_FMT.format(hex(start), range_end, '\n'.join(non_section_strings)))
+      alerts.append({
+        'title': 'Non-Section (File Offset Range {0} - {1}) Possible Strings of Interest'.format(hex(start), range_end),
+        'description': 'These are not mapped into memory at runtime. Malware could place disk persistence here to be referenced by some other executable.',
+        'data': non_section_strings,
+        'code': '',
+      })
   return alerts

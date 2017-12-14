@@ -2,7 +2,6 @@
 Align imported dlls/functions to executable functionality.
 """
 import sys
-import textwrap
 
 # create ordinal mappings dictionary
 ords2names = {}
@@ -128,15 +127,10 @@ targets = {
 # constant for an unknown import by ordinal
 ORDINAL_DESC = 'Ordinal is decoded at runtime. To see ordinal mapping, Download the DLL and use the parse_exports() method of the PE class.'
 
-ALERT_FMT = """
-Suspicious Imports:
-
-\t{0}"""
 
 def run(peobject):
-  # array to hold list of final alerts
-  alerts = []
   found = []
+  alerts = []
   # search for functionality in imports list
   for dll in peobject.parse_imports():
     # loop through each function in the DLL
@@ -148,17 +142,21 @@ def run(peobject):
           name = ords2names[dll['dll'].lower()][f['ordinal']]
         else:
           # unknown dll with ordinal import
-          target = '[' + dll['dll'] + '] ordinal(' + hex(f['ordinal']).rstrip('L') + '):\n\t\t' + '\n\t\t'.join(textwrap.wrap(ORDINAL_DESC, break_long_words=False)) + '\n'
+          target = ''.join(['[', dll['dll'], '] ordinal(', hex(f['ordinal']).rstrip('L'), ') : ', ORDINAL_DESC])
           if target not in found:
             found.append(target)
-      # check for function in targets
+      # check for function name in targets
       match = [k for k in targets if name in k]
       if match:
-        match = match[0]
-        target = '[' + dll['dll'] + '] ' + match + ':\n\t\t' + '\n\t\t'.join(textwrap.wrap(targets[match], break_long_words=False)) + '\n'
+        target = ''.join(['[', dll['dll'], '] ', match[0], ' : ', targets[match[0]]])
         if target not in found:
           found.append(target)
-  # format alert
+  # this rule generates only one alert
   if found:
-    alerts.append(ALERT_FMT.format('\n\t'.join(found)))
+    alerts.append({
+      'title': 'Suspicious Imports',
+      'description': 'These are imported functions by the executable that indicate functionality.',
+      'data': found,
+      'code': '',
+    })
   return alerts

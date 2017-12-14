@@ -9,17 +9,6 @@ import math
 # entropy analysis
 THRESHOLD = 6.5
 
-ALERT_TITLE = """
-Possible Malware Obfuscation:
-
-  The following sections may contain encrypted/packed data that will be
-  decrypted or unpacked at runtime since they have entropy over {0:.2f}%:
-
-{1}
-"""
-
-ALERT_FMT = '\t- Entropy for section {0} is {1:.2f}%'
-
 
 # performs shannon analysis:
 # https://en.wikipedia.org/wiki/Entropy_(information_theory)
@@ -35,10 +24,8 @@ def byte_entropy(data):
 
 
 def run(peobject):
-  # array to hold list of final alerts
+  found = []
   alerts = []
-  # loop through all sections and calculate entropy
-  alert_fmts = []
   d = peobject.dict()
   for s in d['SECTIONS']:
     # get bytes from section
@@ -46,9 +33,14 @@ def run(peobject):
     # calculate entropy and see if it exceeds the threshold
     e = byte_entropy(data)
     if e > THRESHOLD:
-      alert_fmts.append(ALERT_FMT.format(s['Name'], (e / 8.0) * 100))
-  # return list of alerts for display
-  if alert_fmts:
-    alerts.append(ALERT_TITLE.format((THRESHOLD / 8.0) * 100, '\n'.join(alert_fmts)))
+      found.append('Entropy for section {0} is {1:.2f}%'.format(s['Name'], (e / 8.0) * 100))
+  # this rule generates only one alert
+  if found:
+    alerts.append({
+      'title': 'Possible Malware Obfuscation',
+      'description': 'The following sections may contain encrypted/packed data that will be decrypted or unpacked at runtime since they have entropy over {0:.2f}%'.format((THRESHOLD / 8.0) * 100),
+      'data': found,
+      'code': '',
+    })
   return alerts
 

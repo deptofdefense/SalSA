@@ -170,26 +170,6 @@ common = {
 }
 
 
-SECTION_ALERT = """
-Application Section Names:
-{0}"""
-
-KNOWN_COMMON = """
-  Known common section names (can indicate functionality):
-{0}
-"""
-
-KNOWN_BAD = """
-  Known bad section names:
-{0}
-"""
-
-UNKNOWN = """
-  Unknown section names (can indicate an unknown packer):
-{0}
-"""
-
-
 def run(peobject):
   alerts = []
   unknown = []
@@ -199,20 +179,31 @@ def run(peobject):
   for s in peobject.dict()['SECTIONS']:
     # check for known/unknown sections
     if (s['Name'] in packers):
-      known_bad.append('\t\t' + s['Name'] + ' : ' + packers[s['Name']])
+      known_bad.append(''.join([s['Name'], ' : ', packers[s['Name']]]))
     elif (s['Name'] in common):
-      known_common.append('\t\t' + s['Name'] + ' : ' + common[s['Name']])
+      known_common.append(''.join([s['Name'], ' : ', common[s['Name']]]))
     else:
-      unknown.append('\t\t' + s['Name'] + ' : ???')
+      unknown.append(''.join([s['Name'], ' : ???']))
   # parse each section
-  alert = ''
   if known_common:
-    alert += KNOWN_COMMON.format('\n'.join(known_common))
+    alerts.append({
+      'title': 'Known Common Section Names',
+      'description': 'These can indicate executable functionality.',
+      'data': known_common,
+      'code': '',
+    })
   if known_bad:
-    alert += KNOWN_BAD.format('\n'.join(known_bad))
+    alerts.append({
+      'title': 'Known Bad Section Names',
+      'description': 'These can indicate packer usage.',
+      'data': known_bad,
+      'code': '',
+    })
   if unknown:
-    alert += UNKNOWN.format('\n'.join(unknown))
-  # generate final alert
-  if alert:
-    alerts.append(SECTION_ALERT.format(alert))
+    alerts.append({
+      'title': 'Unknown Section Names',
+      'description': 'These can indicate unknown packers.',
+      'data': unknown,
+      'code': '',
+    })
   return alerts
