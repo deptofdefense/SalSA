@@ -1,5 +1,7 @@
 ## SalSA - (Salvaging Static Analysis)
 
+Documentation available at: https://github.com/deptofdefense/SALSA/wiki
+
 Malware analysis theory has been standardized in industry. It consists of 3 steps:
 
 1. Static Analysis - not running the malware
