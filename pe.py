@@ -432,8 +432,7 @@ class PE(object):
         if self._d['DATA_DIRECTORY']['Debug']:
           self._d['DEBUG_DIRECTORY'] = self._unpack(self._h['DEBUG_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Debug']))
       except:
-        print filename, self._d
-        # self._error('Failed to parse debug data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Debug'])))
+        self._error('Failed to parse debug data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Debug'])))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # export directory (.edata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

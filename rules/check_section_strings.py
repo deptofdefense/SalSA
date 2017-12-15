@@ -50,7 +50,7 @@ def run(peobject):
     if found:
       alerts.append({
         'title': 'Section {0} Possible Strings of Interest'.format(s['Name']),
-        'description': '',
+        'description': 'Strings that match the following patterns: local/remote filepaths, IP addresses, filenames, urls, email addresses',
         'data': found,
         'code': '',
       })
