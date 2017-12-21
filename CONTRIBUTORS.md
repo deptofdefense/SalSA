@@ -8,6 +8,6 @@ Copyright <Year> <Copyright Holder Name>
 ````
 ____
 
-* 2017 Aaron Reyes
+## Copyright 2017 U.S. Federal Government (in countries where recognized)
 
-Copyright &lt;2017&gt; U.S. Federal Government (in countries where recognized)
+* 2017 Aaron Reyes
