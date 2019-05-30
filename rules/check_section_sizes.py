@@ -6,10 +6,12 @@ def run(peobject):
   alerts = []
   found = []
   # loop through each section
-  for s in peobject.dict()['SECTIONS']:
-    # check for a raw size of 0 on disk but a non-zero size in virtual memory
-    if (s['SizeOfRawData'] == 0) and (s['VirtualSize'] > 0):
-      found.append('Section {0} has a disk size of {1} bytes but a virtual size of {2} bytes'.format(s['Name'], s['SizeOfRawData'], s['VirtualSize']))
+  d = peobject.dict()
+  if 'SECTIONS' in d:
+    for s in d['SECTIONS']:
+      # check for a raw size of 0 on disk but a non-zero size in virtual memory
+      if (s['SizeOfRawData'] == 0) and (s['VirtualSize'] > 0):
+        found.append('Section {0} has a disk size of {1} bytes but a virtual size of {2} bytes'.format(s['Name'], s['SizeOfRawData'], s['VirtualSize']))
   # this rule generates only one alert
   if found:
     alerts.append({

@@ -176,14 +176,16 @@ def run(peobject):
   known_bad = []
   known_common = []
   # loop through each section
-  for s in peobject.dict()['SECTIONS']:
-    # check for known/unknown sections
-    if (s['Name'] in packers):
-      known_bad.append(''.join([s['Name'], ' : ', packers[s['Name']]]))
-    elif (s['Name'] in common):
-      known_common.append(''.join([s['Name'], ' : ', common[s['Name']]]))
-    else:
-      unknown.append(''.join([s['Name'], ' : ???']))
+  d = peobject.dict()
+  if 'SECTIONS' in d:
+    for s in d['SECTIONS']:
+      # check for known/unknown sections
+      if (s['Name'] in packers):
+        known_bad.append(''.join([s['Name'], ' : ', packers[s['Name']]]))
+      elif (s['Name'] in common):
+        known_common.append(''.join([s['Name'], ' : ', common[s['Name']]]))
+      else:
+        unknown.append(''.join([s['Name'], ' : ???']))
   # parse each section
   if known_common:
     alerts.append({

@@ -7,3 +7,6 @@ __pycache__/
 
 # C extensions
 *.so
+
+# OS files
+.*

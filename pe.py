@@ -1,9 +1,9 @@
-
 import os
 import re
 import copy
 import struct
 import pprint
+import logging
 
 
 class PE(object):
@@ -344,14 +344,13 @@ class PE(object):
     },
   }
 
-  def __init__(self, filename, verbose):
+  def __init__(self, file):
     """ extract PE file piece by piece """
     offset = 0
     self._d = {}
     self._err = False
-    self._v = verbose
     self._b64 = False
-    self._file = open(filename, 'rb')
+    self._file = open(file, 'rb')
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse DOS header
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -393,7 +392,7 @@ class PE(object):
           self._d['IMAGE_HEADER'] = self._unpack(self._h['IMAGE_HEADER_32'], offset)
           offset += self._h['IMAGE_HEADER_32']['len']
     except:
-      self._error('Failed to parse optional image header.')
+      self._error('Failed to parse image header.')
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
     # parse data directory (number of directories varies by compiler)
     # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -417,7 +416,7 @@ class PE(object):
         section = self._unpack(self._h['SECTION_HEADER'], offset)
         offset += self._h['SECTION_HEADER']['len']
         # fix section name to remove null byte padding
-        section['Name'] = section['Name'].replace('\x00', '')
+        section['Name'] = section['Name'].replace(b'\x00', b'').decode('UTF-8')
         self._d['SECTIONS'].append(section)
     except:
       self._error('Failed to parse section headers.')
@@ -432,7 +431,7 @@ class PE(object):
         if self._d['DATA_DIRECTORY']['Debug']:
           self._d['DEBUG_DIRECTORY'] = self._unpack(self._h['DEBUG_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Debug']))
       except:
-        self._error('Failed to parse debug data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Debug'])))
+        self._error('Failed to parse debug data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['Debug']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # export directory (.edata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -441,7 +440,7 @@ class PE(object):
           self._d['EXPORT_DIRECTORY'] = self._unpack(self._h['EXPORT_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Export']))
           self._d['EXPORT_DIRECTORY']['Name'] = self.offset2str(self.rva2offset(self._d['EXPORT_DIRECTORY']['Name']))
       except:
-        self._error('Failed to parse export data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Export'])))
+        self._error('Failed to parse export data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['Export']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # import directory (.idata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -461,7 +460,7 @@ class PE(object):
             # go to the next descriptor
             import_desc_offset += self._h['IMPORT_DESCRIPTOR']['len']
       except:
-        self._error('Failed to parse import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Import'])))
+        self._error('Failed to parse import data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['Import']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # bound import directory (.idata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -478,11 +477,11 @@ class PE(object):
             # goto next descriptor
             bound_import_offset += self._h['BOUND_IMPORT_DESCRIPTOR']['len']
             # replace name field with actual string
-            bound_import_desc['OffsetModuleName'] =  self.offset2str(self._d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['OffsetModuleName'])
+            bound_import_desc['OffsetModuleName'] = self.offset2str(self._d['DATA_DIRECTORY']['BoundImport'] + bound_import_desc['OffsetModuleName'])
             # add to class dictionary
             self._d['BOUND_IMPORTS_DIRECTORY'].append(bound_import_desc)
       except:
-        self._error('Failed to parse bound import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['BoundImport'])))
+        self._error('Failed to parse bound import data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['BoundImport']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # relocation directory (.reloc)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -499,7 +498,7 @@ class PE(object):
             # add to class dictionary
             self._d['RELOCATION_DIRECTORY'].append(reloc_entry)
       except:
-        self._error('Failed to parse relocation data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['BaseRelocationTable'])))
+        self._error('Failed to parse relocation data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['BaseRelocationTable']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # exception directory (.pdata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -517,7 +516,7 @@ class PE(object):
             # add to class dictionary
             self._d['EXCEPTION_DIRECTORY'].append(exception_entry)
       except:
-        self._error('Failed to parse exception data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Exception'])))
+        self._error('Failed to parse exception data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['Exception']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # TLS directory (.tls)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -528,7 +527,7 @@ class PE(object):
           else:
             self._d['TLS_DIRECTORY'] = self._unpack(self._h['TLS_DIRECTORY_32'], self.rva2offset(self._d['DATA_DIRECTORY']['ThreadLocalStorage']))
       except:
-        self._error('Failed to parse thread local storage data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['ThreadLocalStorage'])))
+        self._error('Failed to parse thread local storage data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['ThreadLocalStorage']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # delay imports directory (.idata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -543,7 +542,7 @@ class PE(object):
             if self._isZero(import_desc):
               break
             # resolve the name of the import descriptor and check for RVA bug:
-            # https://reverseengineering.stackexchange.com/questions/16261/should-the-delay-import-directory-contain-virtual-addresses
+            # https://reverseengineering.stackexchange.com/questions/16261
             if not (import_desc['Attributes'] & 0x1):
               import_desc['Name'] = self.va2rva(import_desc['Name'])
             import_desc['Name'] = self.offset2str(self.rva2offset(import_desc['Name']))
@@ -551,7 +550,7 @@ class PE(object):
             # go to the next descriptor
             import_desc_offset += self._h['DELAY_IMPORT_DESCRIPTOR']['len']
       except:
-        self._error('Failed to parse delay imports data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['DelayImportTable'])))
+        self._error('Failed to parse delay imports data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['DelayImportTable']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # configuration directory (.rdata)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -562,7 +561,7 @@ class PE(object):
           else:
             self._d['LOAD_CONFIG_DIRECTORY'] = self._unpack(self._h['LOAD_CONFIG_DIRECTORY_32'], self.rva2offset(self._d['DATA_DIRECTORY']['LoadConfiguration']))
       except:
-        self._error('Failed to parse load configuration data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['LoadConfiguration'])))
+        self._error('Failed to parse load configuration data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['LoadConfiguration']))
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
       # resource directory (.rsrc)
       # ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -570,22 +569,19 @@ class PE(object):
         if self._d['DATA_DIRECTORY']['Resource']:
           self._d['RESOURCE_DIRECTORY'] =  self._unpack(self._h['RESOURCE_DIRECTORY'], self.rva2offset(self._d['DATA_DIRECTORY']['Resource']))
       except:
-        self._error('Failed to parse resource data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Resource'])))
+        self._error('Failed to parse resource data directory at RVA 0x{:08X}.'.format(self._d['DATA_DIRECTORY']['Resource']))
 
   def __str__(self):
     """ format internals as hex strings """
-    output = copy.deepcopy(self._d)
-    self._fmt2hex(output)
-    return pprint.pformat(output)
+    return pprint.pformat(self.hex(copy.deepcopy(self._d)))
 
-  def _error(self, desc, prefix='-'):
+  def _error(self, desc):
     """ display the error and verbose description formatted """
     if not self._err:
       self._err = True
       # only print this once
-      print('[-] WARNING: Possible malformed PE file or malicious tampering to prevent analysis.')
-    if self._v:
-      print('[-]  ' + prefix + ' ' + desc)
+      logging.warning('Possible malformed PE file or malicious tampering found to prevent analysis.')
+    logging.error(desc)
 
   def _unpack(self, src, offset):
     """ internal function to unpack a given struct/header into an array of bytes """
@@ -596,22 +592,6 @@ class PE(object):
       dst[src['fmt'][i][0]] = raw[i]
     return dst
 
-  def _fmt2hex(self, d):
-    """ format dictionary 'd' into a readable hex format """
-    if isinstance(d, dict):
-      for k in d.keys():
-        d[k] = self._fmt2hex(d[k])
-      return d
-    elif isinstance(d, list):
-      for i in range(len(d)):
-        d[i] = self._fmt2hex(d[i])
-      return d
-    elif isinstance(d, int):
-      return hex(d)
-    elif isinstance(d, str):
-      # return raw ascii strings with . for unknwown bytes
-      return ''.join([x if ((31 < ord(x)) and (ord(x) < 127)) else '.' for x in d])
-
   def _isZero(self, d):
     """ checks a dictionary to see if it is all zeros """
     for k in d:
@@ -619,39 +599,65 @@ class PE(object):
         return False
       if isinstance(d[k], str) and ('\x00' not in d[k]):
         return False
+      if isinstance(d[k], dict):
+        return self._isZero(d[k])
     return True
 
   def read(self, addr, num_bytes):
     """ read bytes from file at a certain offset """
     self._file.seek(addr)
-    d = self._file.read(num_bytes)
-    return d
+    return self._file.read(num_bytes)
 
   def dict(self):
     """ returns a copy of internal PE headers for user modification as
         a python dictionary """
     return copy.deepcopy(self._d)
 
+  def hex(self, d):
+    """ format dictionary 'd' into a readable hex format """
+    if isinstance(d, dict):
+      for k in d.keys():
+        d[k] = self.hex(d[k])
+      return d
+    elif isinstance(d, list) or isinstance(d, set) or isinstance(d, tuple):
+      for i in range(len(d)):
+        d[i] = self.hex(d[i])
+      return d
+    elif isinstance(d, int):
+      return hex(d)
+    elif isinstance(d, str):
+      # return raw ascii strings with . for unknown bytes
+      return ''.join([x if ((32 <= ord(x)) and (ord(x) <= 126)) else '.' for x in d])
+    elif isinstance(d, bytes):
+      # return raw ascii strings with . for unknown bytes
+      return ''.join([chr(x) if ((32 <= int(x)) and (int(x) <= 126)) else '.' for x in d])
+
   def rva2offset(self, rva):
     """ get raw file offset from RVA """
     for section in self._d['SECTIONS']:
-      if (section['VirtualAddress'] <= rva) and (rva < (section['VirtualAddress'] + section['VirtualSize'])):
+      if (section['VirtualAddress'] <= rva) and (rva < (section['VirtualAddress'] + max(section['VirtualSize'], section['SizeOfRawData']))):
         return section['PointerToRawData'] + (rva - section['VirtualAddress'])
     # this means the RVA is invalid
-    raise Exception
+    self._error('Invalid RVA 0x{:08X}. It does not point to any defined sections.'.format(rva))
+    return -1
 
   def va2rva(self, va):
     """ take a virtual address and scale it back by the
-        imagebase in the image optional header """
+        ImageBase in the image optional header """
     return va - self._d['IMAGE_HEADER']['ImageBase']
 
   def offset2str(self, offset):
     """ take a raw file offset and extract the string there """
     count = 0
     self._file.seek(offset)
-    while ord(self._file.read(1)):
-      count += 1
-    return struct.unpack('{0}s'.format(count), self.read(offset, count))[0]
+    while True:
+      c = ord(self._file.read(1))
+      # check if byte is printable ASCII
+      if (32 <= c) and (c <= 126):
+        count += 1
+      else:
+        break
+    return struct.unpack('{0}s'.format(count), self.read(offset, count))[0].decode('UTF-8')
 
   def parse_exports(self):
     """ try and follow the export directory and return PE exports """
@@ -690,9 +696,9 @@ class PE(object):
               e['name'] = name
               break
     except:
-      self._error('Failed to extract export data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Export'])))
-      for l in pprint.pformat(self._fmt2hex(self._d['EXPORT_DIRECTORY']), indent=2).split('\n'):
-        self._error(l, prefix='')
+      self._error('Failed to extract export data directory at RVA 0x{:08X}'.format(self._d['DATA_DIRECTORY']['Export']))
+      for l in pprint.pformat(self.hex(self._d['EXPORT_DIRECTORY']), indent=2).split('\n'):
+        self._error(l)
     finally:
       return exports
 
@@ -703,10 +709,9 @@ class PE(object):
     def _parseIAT(rva, attr=0x1):
       """ internal helper to parse the Import Address Table (IAT) for
           delay import tables and normal (static) import tables. The attr
-          argument only applies to bound import tables (see bug below) """
-      # parse all imports within the current descriptor and check for
-      # Microsoft C++ 6.0 bug to convert virtual address to RVA:
-      # https://reverseengineering.stackexchange.com/questions/16261/should-the-delay-import-directory-contain-virtual-addresses
+          argument only applies to bound import tables. There we check for
+          a Microsoft C++ 6.0 bug to convert virtual address to RVA:
+          https://reverseengineering.stackexchange.com/questions/16261 """
       desc_imports = []
       import_entry_ptr = self.rva2offset(rva) if (attr & 0x1) else self.rva2offset(self.va2rva(rva))
       while True:
@@ -725,13 +730,9 @@ class PE(object):
           break
         # if not an ordinal, then get entry data at pointer
         if not import_entry['ordinal']:
-          # if not (attr & 0x1):
-          #   print 'b delay: ', hex(entry_rva)
           # name pointer after hint which is 2 bytes
           entry_rva = entry_rva if (attr & 0x1) else self.va2rva(entry_rva)
           import_entry['hint'] = struct.unpack('<H', self.read(self.rva2offset(entry_rva), 2))[0]
-          # if not (attr & 0x1):
-          #   print 'a delay: ', hex(entry_rva), '\n'
           import_entry['name'] = self.offset2str(self.rva2offset(entry_rva + 2))
         # go to next pointer (8 for x86-64 and 4 for x86)
         import_entry_ptr += 8 if (self._b64) else 4
@@ -740,43 +741,42 @@ class PE(object):
     if 'IMPORT_DIRECTORY' in self._d:
       # go through each import descriptor and get list of imports
       for import_desc in self._d['IMPORT_DIRECTORY']:
-        # try FT array first because malware will put bogus data in OFT
         functions = []
         try:
-          functions = _parseIAT(import_desc['FirstThunk'])
+          try:
+            functions = _parseIAT(import_desc['FirstThunk'])
+          except:
+            functions = _parseIAT(import_desc['OriginalFirstThunk'])
         except:
-          functions = _parseIAT(import_desc['OriginalFirstThunk'])
-        finally:
-          if functions:
-            imports.append({
-              'dll': import_desc['Name'],
-              'functions': functions,
-            })
-          else:
-            elf._error('Failed to extract import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Import'])))
-            for d in self._d['IMPORT_DIRECTORY']:
-              for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
-                self._error(l, prefix='')
+          self._error('Failed to extract import data directory at RVA 0x{:08X}'.format(self._d['DATA_DIRECTORY']['Import']))
+          for d in self._d['IMPORT_DIRECTORY']:
+            for l in pprint.pformat(self.hex(d), indent=2).split('\n'):
+              self._error(l)
+        else:
+          imports.append({
+            'dll': import_desc['Name'],
+            'functions': functions,
+          })
     if 'DELAY_IMPORT_DIRECTORY' in self._d:
       # go through each delay import descriptor and get list of imports
       for import_desc in self._d['DELAY_IMPORT_DIRECTORY']:
         # this isn't documented anywhere but it looks like the INT is more reliable than IAT here
         functions = []
         try:
-          functions = _parseIAT(import_desc['ImportNameTable'], attr=import_desc['Attributes'])
+          try:
+            functions = _parseIAT(import_desc['ImportNameTable'], attr=import_desc['Attributes'])
+          except:
+            functions = _parseIAT(import_desc['ImportAddressTable'], attr=import_desc['Attributes'])
         except:
-          functions = _parseIAT(import_desc['ImportAddressTable'], attr=import_desc['Attributes'])
-        finally:
-          if functions:
-            imports.append({
-              'dll': import_desc['Name'],
-              'functions': functions,
-            })
-          else:
-            self._error('Failed to extract delay import data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['DelayImportTable'])))
-            for d in self._d['DELAY_IMPORT_DIRECTORY']:
-              for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
-                self._error(l, prefix='')
+          self._error('Failed to extract delay import data directory at RVA 0x{:08X}'.format(self._d['DATA_DIRECTORY']['DelayImportTable']))
+          for d in self._d['DELAY_IMPORT_DIRECTORY']:
+            for l in pprint.pformat(self.hex(d), indent=2).split('\n'):
+              self._error(l)
+        else:
+          imports.append({
+            'dll': import_desc['Name'],
+            'functions': functions,
+          })
     return imports
 
   def parse_relocations(self):
@@ -807,17 +807,17 @@ class PE(object):
               section_name = section['Name']
               break
           if not section_name:
-            print('[-] WARNING! Relocation Relative Virtual Address: {0} does not fall inside any specified section'.format(hex(reloc_block['VirtualAddress'])))
+            logging.error('Relocation RVA 0x{:08X} does not fall inside any specified section'.format(reloc_block['VirtualAddress']))
             section_name = ''
           relocs.append({
             'relocations': reloc_entries,
             'section': section_name,
           })
     except:
-      self._error('Failed to extract relocation data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['BaseRelocationTable'])))
+      self._error('Failed to extract relocation data directory at RVA 0x{:08X}'.format(self._d['DATA_DIRECTORY']['BaseRelocationTable']))
       for d in self._d['RELOCATION_DIRECTORY']:
-        for l in pprint.pformat(self._fmt2hex(d), indent=2).split('\n'):
-          self._error(l, prefix='')
+        for l in pprint.pformat(self.hex(d), indent=2).split('\n'):
+          self._error(l)
     finally:
       return relocs
 
@@ -845,11 +845,11 @@ class PE(object):
           # check for null
           if callback == 0:
             break
-          callbacks.append(self.rva2offset(self.va2rva((callback))))
+          callbacks.append(self.rva2offset(self.va2rva(callback)))
     except:
-      self._error('Failed to extract thread local storage data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['ThreadLocalStorage'])))
-      for l in pprint.pformat(self._fmt2hex(self._d['TLS_DIRECTORY']), indent=2).split('\n'):
-        self._error(l, prefix='')
+      self._error('Failed to extract thread local storage data directory at RVA 0x{:08X}'.format(self._d['DATA_DIRECTORY']['ThreadLocalStorage']))
+      for l in pprint.pformat(self.hex(self._d['TLS_DIRECTORY']), indent=2).split('\n'):
+        self._error(l)
     finally:
       return {'data': data, 'callback_offsets': callbacks}
 
@@ -896,7 +896,7 @@ class PE(object):
           try:
             node['data'] = struct.unpack('{0}s'.format(data_len), self.read(self.rva2offset(data_rva), data_len))[0]
           except:
-            node['data'] = ''
+            node['data'] = b''
           node['lang'] = ename & 0xFFFF
           node['path'] = path
           # append data to the current level in recursion
@@ -908,9 +908,9 @@ class PE(object):
         # recurse down the resource directory
         _recurseOnDirectoryEntry(self._d['DATA_DIRECTORY']['Resource'], rdir, '/')
     except:
-      self._error('Failed to extract resource data directory at RVA {0}'.format(hex(self._d['DATA_DIRECTORY']['Resource'])))
-      for l in pprint.pformat(self._fmt2hex(self._d['RESOURCE_DIRECTORY']), indent=2).split('\n'):
-        self._error(l, prefix='')
+      self._error('Failed to extract resource data directory at RVA 0x{:08X}'.format(self._d['DATA_DIRECTORY']['Resource']))
+      for l in pprint.pformat(self.hex(self._d['RESOURCE_DIRECTORY']), indent=2).split('\n'):
+        self._error(l)
     finally:
       return rdir
 
@@ -919,9 +919,9 @@ class PE(object):
         if size is -1, then the whole file is searched. """
     result = {}
     _lang = {
-      'ascii':    r'[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"\\#$%&\'()*+,\-./:;<=>?@[\]^_`{|}~ ]',
+      'ascii':    r'[0123456789abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ!\"\\#$%&\'()*+,\-./:;<=>?@\[\]^_`{|}~ ]',
       # languages are encoded in little endian for windows
-      'latin':    r'(?:[\x20-\x7E][\x00])',               # 0020-007F (includes space)
+      'latin':    r'(?:[\x20-\x7E][\x00])',               # 0020-007F with space
       'cyrillic': r'(?:[\x00-\xFF][\x04]|\x20\x00)',      # 0400-04FF with space
       'arabic':   r'(?:[\x00-\xFF][\x06]|\x20\x00)',      # 0600-06FF with space
       'hebrew':   r'(?:[\x90-\xFF][\x05]|\x20\x00)',      # 0590-05FF with space
@@ -932,8 +932,8 @@ class PE(object):
       size = os.stat(self._file.name).st_size - start
     # extract data
     data = self.read(start, size)
-    # extract ASCII/UTF strings accross each language set
+    # extract ASCII/UTF strings across each language set
     for l in _lang.keys():
       regex = re.compile('{0}{{{1},}}'.format(_lang[l], min_length).encode('ascii'))
-      result[l] = [b.decode('UTF-16LE') if (l != 'ascii') else b for b in regex.findall(data)]
+      result[l] = [b.decode('UTF-16LE') if (l != 'ascii') else b.decode('ascii') for b in regex.findall(data)]
     return result

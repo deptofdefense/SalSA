@@ -3,12 +3,39 @@ Align imported dlls/functions to executable functionality.
 """
 import sys
 
+# import all supported ordinal decodings
+from rules.ordinal_mappings import advapi32
+from rules.ordinal_mappings import cabinet
+from rules.ordinal_mappings import comctl32
+from rules.ordinal_mappings import mfc42
+from rules.ordinal_mappings import msvbvm60
+from rules.ordinal_mappings import ntdll
+from rules.ordinal_mappings import odbc32
+from rules.ordinal_mappings import oleaut32
+from rules.ordinal_mappings import oledlg
+from rules.ordinal_mappings import propsys
+from rules.ordinal_mappings import shell32
+from rules.ordinal_mappings import shlwapi
+from rules.ordinal_mappings import ws2_32
+from rules.ordinal_mappings import wsock32
+
 # create ordinal mappings dictionary
 ords2names = {}
-import ordinal_mappings
-for dll in ordinal_mappings.__all__:
-  __import__('rules.ordinal_mappings.' + dll)
-  ords2names[dll + '.dll'] = sys.modules['rules.ordinal_mappings.' + dll].mapping
+ords2names['advapi32.dll'] = advapi32.mapping
+ords2names['cabinet.dll'] = cabinet.mapping
+ords2names['comctl32.dll'] = comctl32.mapping
+ords2names['mfc42.dll'] = mfc42.mapping
+ords2names['msvbvm60.dll'] = msvbvm60.mapping
+ords2names['ntdll.dll'] = ntdll.mapping
+ords2names['odbc32.dll'] = odbc32.mapping
+ords2names['oleaut32.dll'] = oleaut32.mapping
+ords2names['oledlg.dll'] = oledlg.mapping
+ords2names['propsys.dll'] = propsys.mapping
+ords2names['shell32.dll'] = shell32.mapping
+ords2names['shlwapi.dll'] = shlwapi.mapping
+ords2names['ws2_32.dll'] = ws2_32.mapping
+ords2names['wsock32.dll'] = wsock32.mapping
+
 
 # list of targeted functions and their descriptions
 targets = {
@@ -58,7 +85,7 @@ targets = {
   'GetThreadContext': 'This function returns the context structure of a given thread. The context for a thread stores all the thread information, such as the register values and current state.',
   'GetVersionEx': 'This function returns information about which version of Windows is currently running. This can be used as part of a victim survey, or to select between different offsets for undocumented structures that have changed between different versions of Windows.',
   'GetWindowDC': 'This function retrieves the device context (DC) for the entire window, including title bar, menus, and scroll bars. Used to take a screenshot of a particular GUI window (like a browser).',
-  'GetWindowsDirectory': 'This function returns the file path to the Windows directory (usually C:\Windows). Malware sometimes uses this call to determine into which directory to install additional malicious programs.',
+  'GetWindowsDirectory': 'This function returns the file path to the Windows directory (usually C:\\Windows). Malware sometimes uses this call to determine into which directory to install additional malicious programs.',
   'GetWindowText': 'This function gets the title of all program windows for the current user. Used to enumerate processes that have a GUI interface.',
   'HttpOpenRequest': 'This function sets up the OS resources for an HTTP request.',
   'HttpSendRequest': 'This function actually makes an outgoing HTTP connection.',
