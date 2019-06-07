@@ -1,5 +1,7 @@
 # SalSA - (`Sal`vaging `S`tatic `A`nalysis)
 
+Windows PE File Parsing in the Browser: https://a-rey.github.io/SalSA/ 
+
 Documentation available at: https://github.com/deptofdefense/SALSA/wiki
 
 Malware analysis theory has been standardized in industry. It consists of 3 steps:
